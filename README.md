@@ -1,2 +1,2 @@
-# pyfoma
+# PyFoma
 Python Finite-State Toolkit
