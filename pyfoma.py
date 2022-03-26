@@ -10,9 +10,9 @@ class regexparse:
     builtins = {'reverse': lambda x: FST.reverse(x), 'invert':lambda x: FST.invert(x),
                 'minimize': lambda x: FST.minimize(x), 'determinize': lambda x:\
                 FST.determinize(x), 'ignore': lambda x,y: FST.ignore(x,y)}
-    precedence = {"FUNC": 11, "CONTAINS":11, "COMMA":2, "COMPOSE":3, "UNION":4,
-                  "INTERSECTION":4, "MINUS":4, "CONCAT":6, "IGNORE":7, "COMPLEMENT":8,
-                  "STAR":9, "PLUS":9, "OPTIONAL":9, "WEIGHT":9, "CP":10, "RANGE":9}
+    precedence = {"FUNC": 11, "COMMA":2, "COMPOSE":3, "UNION":4, "INTERSECTION":4,
+                  "MINUS":4, "CONCAT":6, "IGNORE":7, "COMPLEMENT":8, "STAR":9, "PLUS":9,
+                  "OPTIONAL":9, "WEIGHT":9, "CP":10, "RANGE":9}
     operands  = {"SYMBOL", "VARIABLE", "ANY", "EPSILON", "CHAR_CLASS"}
     operators = set(precedence.keys())
     unarypost = {"STAR", "PLUS", "WEIGHT", "OPTIONAL", "RANGE"}
@@ -31,7 +31,7 @@ class regexparse:
         self.compiled = self.compile()
 
     def character_class_parse(self, charclass):
-        """Parse a character class into range pairs, e.g. a-zA => [(97,122), (65,65)].
+        """Parse a character class into range pairs, e.g. 'a-zA' => [(97,122), (65,65)].
            'Writing clear and unambiguous specifications for character classes is tough,
            and implementing them perfectly is worse, requiring a lot of tedious and
            uninstructive coding.' -Brian Kernighan (in "Beautiful Code", 2007). """
@@ -65,6 +65,9 @@ class regexparse:
         return ranges, negated
 
     def compile(self):
+        """Put it all together!
+        '"If you lie to the compiler, it will have its revenge." — Henry Spencer.'"""
+
         def _stackcheck(s):
             if not s:
                 self._error_report(SyntaxError, "You stopped making sense!", line_num, column)
@@ -91,13 +94,13 @@ class regexparse:
                     _append(stack, self.builtins[value](*_getargs(stack)))
                 else:
                     self._error_report(SyntaxError, "Function \"" + value + "\" not defined.", line_num, column)
-            if op == 'LPAREN':
+            elif op == 'LPAREN':
                 self._error_report(SyntaxError, "Missing closing parentehesis.", line_num, column)
-            if op == 'COMMA': # Create tuple on top of stack of top two elements
+            elif op == 'COMMA': # Create tuple on top of stack of top two elements
                 _merge(stack)
-            if op == 'UNION':
+            elif op == 'UNION':
                 _append(stack, _pop(stack).union(_pop(stack)))
-            if op == 'MINUS':
+            elif op == 'MINUS':
                 arg2, arg1 = _pop(stack), _pop(stack)
                 _append(stack, arg1.difference(arg2.determinize()))
             elif op == 'INTERSECTION':
@@ -105,8 +108,6 @@ class regexparse:
             elif op == 'CONCAT':
                 second = _pop(stack)
                 _append(stack, _pop(stack).concatenate(second).accessible())
-            elif op == 'CONTAINS':
-                _append(stack, FST(label = '.').kleene_closure().concatenate(_pop(stack)).concatenate(FST(label = '.').kleene_closure()))
             elif op == 'STAR':
                 _append(stack, _pop(stack).kleene_closure())
             elif op == 'PLUS':
@@ -143,18 +144,20 @@ class regexparse:
                 _append(stack, FST(label = ('.',)))
             elif op == 'VARIABLE': # TODO: copy self.defined[value]
                 if value not in self.defined:
-                    self._error_report(SyntaxError, "Defined FST \"" + value + "\" not found.", line_num, column)
+                    self._error_report(SyntaxError, "Defined FST \"" + value + "\" not \
+                                                     found.", line_num, column)
                 _append(stack, self.defined[value])
             elif op == 'CHAR_CLASS':
                 charranges, negated = self.character_class_parse(value)
                 _append(stack, FST.character_ranges(charranges, complement = negated))
         if len(stack) != 1: # If there's still stuff on the stack, that's a syntax error
-            self._error_report(SyntaxError, "Something's happening here, and what it is ain't exactly clear...", 1, 0)
-        return _pop(stack).trim().push_weights().minimize()
+            self._error_report(SyntaxError, "Something's happening here, and what it is ain't \
+                                             exactly clear...", 1, 0)
+        return _pop(stack).trim().push_weights().minimize().cleanup_sigma()
 
     def tokenize(self):
         """Token, token, token, though the stream is broken... ride 'em in, tokenize!"""
-        # prematch (skip this), groupname, core regex (capture), postmatch (skip)
+        # prematch (skip this), groupname, core regex (capture this), postmatch (skip)
         token_regexes = [
         (r'\\'  , 'ESCAPED',    r'.',                        r''),          # Esc'd sym
         (r"'"   , 'QUOTED',     r"(\\[']|[^'])*",            r"'"),         # Quoted sym
@@ -260,6 +263,7 @@ class FST:
                         newfst.initialstate.add_transition(secondstate, (chr(symbol),), 0.0)
         if complement:
             newfst.initialstate.add_transition(secondstate, ('.',), 0.0)
+            alphabet.add('.')
         newfst.alphabet = alphabet
         return newfst
 
@@ -273,6 +277,8 @@ class FST:
     def rlg(cls, grammar, startsymbol):
         """Compile a (wighted) right-linear grammar into an FST, similarly to lexc."""
         def _rlg_tokenize(w):
+            if w == '':
+                return ['']
             tokens = []
             tok_re = r"'(?P<multi>([']|[^']*))'|\\(?P<esc>(.))|(?P<single>(.))"
             for mo in re.finditer(tok_re, w):
@@ -297,7 +303,8 @@ class FST:
                 i = _rlg_tokenize(lhs[0])
                 o = i if len(lhs) == 1 else _rlg_tokenize(lhs[1])
                 newfst.alphabet |= {sym for sym in i + o}
-                for ii, oo, idx in itertools.zip_longest(i, o, range(max(len(i), len(o))), fillvalue = ''):
+                for ii, oo, idx in itertools.zip_longest(i, o, range(max(len(i), len(o))),
+                    fillvalue = ''):
                     w = 0.0
                     if idx == max(len(i), len(o)) - 1: # dump weight on last transition
                         targetstate = statedict[target]
@@ -443,7 +450,15 @@ class FST:
         self.finalstates &= self.states
         return self
 
+    def cleanup_sigma(self):
+        """Remove symbols if they are no longer needed, including . ."""
+        seen = {sym for _, lbl, _ in self.all_transitions(self.states) for sym in lbl}
+        if '.' not in seen:
+            self.alphabet &= seen
+        return self
+
     def view(self, raw = False, show_weights = False, show_alphabet = True):
+
         import graphviz
         from IPython.display import display
         def _float_format(num):
@@ -592,7 +607,7 @@ class FST:
 
         return newfst, q1q2
 
-    def epsilon_removal(self):
+    def epsilon_remove(self):
         """Create new epsilon-free FSM equivalent to original."""
         # For each state s, figure out the min-cost w' to hop to a state t with epsilons
         # Then, add the (non-e) transitions of state t to s, adding w' to their cost
@@ -731,7 +746,7 @@ class FST:
 
     def minimize(self):
         """Minimize, currently through Brzozowski."""
-        return self.reverse().determinize().reverse().determinize()
+        return self.epsilon_remove().reverse().determinize().reverse().determinize()
 
     def kleene_closure(self, mode = 'star'):
         """T1*. No epsilons here."""
@@ -882,7 +897,10 @@ class FST:
     def project(self, dim):
         """Let's project. dim = -1 will get output proj regardless of # of tapes."""
         for s in self.states:
-            s.transitions  = {lbl[dim]:tr for lbl, tr in s.transitions.items()}
+            newtransitions = {}
+            for lbl, tr in s.transitions.items():
+                newtransitions[lbl[dim]] = newtransitions.get(lbl[dim], set()) | tr
+            s.transitions = newtransitions
         return self
 
     def reverse(self):
