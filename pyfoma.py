@@ -1,18 +1,21 @@
 import heapq, operator, itertools, re, functools
 from collections import deque, defaultdict
 
-
 class regexparse:
 
     shortops = {'|':'UNION', '-':'MINUS', '&':'INTERSECTION', '*':'STAR', '+':'PLUS',
-                '(':'LPAREN', ')':'RPAREN', '?':'OPTIONAL', ':':'CP', '~':"COMPLEMENT",
-                '@':"COMPOSE", ',': 'COMMA'}
+                '(':'LPAREN', ')':'RPAREN', '?':'OPTIONAL', ':':'CP', ':?': 'CPOPTIONAL',
+                '~':"COMPLEMENT", '@':"COMPOSE", ',': 'COMMA', '/':'CONTEXT', '_':'PAIRUP'}
     builtins = {'reverse': lambda x: FST.reverse(x), 'invert':lambda x: FST.invert(x),
                 'minimize': lambda x: FST.minimize(x), 'determinize': lambda x:\
-                FST.determinize(x), 'ignore': lambda x,y: FST.ignore(x,y)}
-    precedence = {"FUNC": 11, "COMMA":2, "COMPOSE":3, "UNION":4, "INTERSECTION":4,
-                  "MINUS":4, "CONCAT":6, "IGNORE":7, "COMPLEMENT":8, "STAR":9, "PLUS":9,
-                  "OPTIONAL":9, "WEIGHT":9, "CP":10, "RANGE":9}
+                FST.determinize(x), 'ignore': lambda x,y: FST.ignore(x,y), 'rewrite':\
+                lambda *args, **kwargs: FST.rewrite(*args, **kwargs), 'restrict':\
+                lambda *args, **kwargs: FST.context_restrict(*args, **kwargs),
+                'project': lambda *args, **kwargs: FST.project(*args, dim = \
+                int(kwargs.get('dim', '-1')))}
+    precedence = {"FUNC": 11, "COMMA":1, "PARAM":1, "COMPOSE":3, "UNION":5, "INTERSECTION":5,
+                  "MINUS":5, "CONCAT":6, "STAR":9, "PLUS":9, "OPTIONAL":9, "WEIGHT":9,
+                  "CP":10, "CPOPTIONAL":10, "RANGE":9, "CONTEXT":1, "PAIRUP":2}
     operands  = {"SYMBOL", "VARIABLE", "ANY", "EPSILON", "CHAR_CLASS"}
     operators = set(precedence.keys())
     unarypost = {"STAR", "PLUS", "WEIGHT", "OPTIONAL", "RANGE"}
@@ -26,8 +29,8 @@ class regexparse:
         self.defined = defined
         self.functions = {f.__name__:f for f in functions} # Who you gonna call?
         self.expression = regularexpression
-        self.tokenized = self._addconc(self.tokenize())
-        self.parsed = self.parse(self.tokenized)
+        self.tokenized = self._insert_invisibles(self.tokenize())
+        self.parsed = self.parse()
         self.compiled = self.compile()
 
     def character_class_parse(self, charclass):
@@ -66,7 +69,7 @@ class regexparse:
 
     def compile(self):
         """Put it all together!
-        '"If you lie to the compiler, it will have its revenge." — Henry Spencer.'"""
+        'If you lie to the compiler, it will have its revenge.' — Henry Spencer."""
 
         def _stackcheck(s):
             if not s:
@@ -78,25 +81,38 @@ class regexparse:
             return _stackcheck(s)[-1][0]
         def _append(s, element):
             s.append([element])
-        def _merge(s):     # since we keep the FSTs inside lists, we need to do some`
-            _stackcheck(s) # reshuffling with a COMMA token so that the top 2 elements
-            one = s.pop()  # get merged into one list that ends up on top of the stack.
-            _stackcheck(s) # [[FST1], [FST2], [FST3]] => [[FST1], [FST2, FST3]]
+        def _merge(s):      # since we keep the FSTs inside lists, we need to do some`
+            _stackcheck(s)  # reshuffling with a COMMA token so that the top 2 elements
+            one = s.pop()   # get merged into one list that ends up on top of the stack.
+            _stackcheck(s)  # [[FST1], [FST2], [FST3]] => [[FST1], [FST2, FST3]]
             s.append(s.pop() + one)
+        def _pairup(s):     # take top two on stack and merge inside list as 2-tuple
+            _stackcheck(s)  # [ [FST1], [FST2], [FST3] ] => [ [FST1], [(FST2, FST3)] ]
+            one = s.pop()
+            _stackcheck(s)
+            s.append([tuple(s.pop() + one)])
         def _getargs(s):
             return _stackcheck(s).pop()
-        stack = []
+        stack, parameterstack = [], []
         for op, value, line_num, column in self.parsed:
             if op == 'FUNC':
-                if value in self.functions:
-                    _append(stack, self.functions[value](*_getargs(stack)))
-                elif value in self.builtins:
-                    _append(stack, self.builtins[value](*_getargs(stack)))
+                if value in self.functions:  # Look in user-defined functions first ...
+                    _append(stack, self.functions[value](*_getargs(stack), **dict(parameterstack)))
+                elif value in self.builtins: # ... then in built-ins
+                    _append(stack, self.builtins[value](*_getargs(stack), **dict(parameterstack)))
                 else:
-                    self._error_report(SyntaxError, "Function \"" + value + "\" not defined.", line_num, column)
+                    self._error_report(SyntaxError, "Function \"" + value + \
+                                        "\" not defined.", line_num, column)
+                parameterstack = []
             elif op == 'LPAREN':
-                self._error_report(SyntaxError, "Missing closing parentehesis.", line_num, column)
-            elif op == 'COMMA': # Create tuple on top of stack of top two elements
+                self._error_report(SyntaxError, "Missing closing parenthesis.", line_num, column)
+            elif op == 'COMMA':   # Collect arguments in single list on top of stack
+                _merge(stack)
+            elif op == 'PARAM':
+                parameterstack.append(value)
+            elif op == 'PAIRUP':  # Collect argument pairs as 2-tuples on top of stack
+                _pairup(stack)
+            elif op == 'CONTEXT': # Same as COMMA, possible future expansion
                 _merge(stack)
             elif op == 'UNION':
                 _append(stack, _pop(stack).union(_pop(stack)))
@@ -136,40 +152,44 @@ class regexparse:
             elif op == 'CP':
                 arg2, arg1 = _pop(stack), _pop(stack)
                 _append(stack, arg1.cross_product(arg2).coaccessible())
+            elif op == 'CPOPTIONAL':
+                arg2, arg1 = _pop(stack), _pop(stack)
+                _append(stack, arg1.cross_product(arg2, optional = True).coaccessible())
             elif op == 'WEIGHT':
                 _peek(stack).add_weight(float(value)).push_weights()
             elif op == 'SYMBOL':
                 _append(stack, FST(label = (value,)))
             elif op == 'ANY':
                 _append(stack, FST(label = ('.',)))
-            elif op == 'VARIABLE': # TODO: copy self.defined[value]
+            elif op == 'VARIABLE':
                 if value not in self.defined:
-                    self._error_report(SyntaxError, "Defined FST \"" + value + "\" not \
-                                                     found.", line_num, column)
-                _append(stack, self.defined[value])
+                    self._error_report(SyntaxError, "Defined FST \"" + value + \
+                                                    "\" not found.", line_num, column)
+                _append(stack, self.defined[value].copy_mod())
             elif op == 'CHAR_CLASS':
                 charranges, negated = self.character_class_parse(value)
                 _append(stack, FST.character_ranges(charranges, complement = negated))
         if len(stack) != 1: # If there's still stuff on the stack, that's a syntax error
             self._error_report(SyntaxError, "Something's happening here, and what it is ain't \
                                              exactly clear...", 1, 0)
-        return _pop(stack).trim().push_weights().minimize().cleanup_sigma()
+        return _pop(stack).trim().epsilon_remove().push_weights().determinize_as_dfa().minimize_as_dfa().label_states_topology().cleanup_sigma()
 
     def tokenize(self):
         """Token, token, token, though the stream is broken... ride 'em in, tokenize!"""
         # prematch (skip this), groupname, core regex (capture this), postmatch (skip)
         token_regexes = [
-        (r'\\'  , 'ESCAPED',    r'.',                        r''),          # Esc'd sym
+        (r"\\"  , 'ESCAPED',    r".",                        r""),          # Esc'd sym
+        (r", *" , 'PARAM',      r"\w+ *= *[+-]? *\w+",       r""),          # Parameter
         (r"'"   , 'QUOTED',     r"(\\[']|[^'])*",            r"'"),         # Quoted sym
-        (r''    , 'SKIPWS',     r'([ \t]+)',                 r''),          # Skip ws
-        (r''    , 'SHORTOP',    r'([|\-&*+()?:~@,])',        r''),          # len 1 ops
-        (r'\$\^', 'FUNC',       r'(\w+)',                    r'(?=\s*\()'), # Functions
-        (r'\$'  , 'VARIABLE',   r'(\w+)',                    r''),          # Variables
-        (r'<'   , 'WEIGHT',     r'([+-]?[0-9]*(\.[0-9]+)?)', r'>'),         # Weight
-        (r'\{'  , 'RANGE',      r'(\d+,(\d+)?|,?\d+|\d+)',   r'\}'),        # {(m),(n)}
-        (r'\['  , 'CHAR_CLASS', r'((\]|[^]\[])+)',           r'\]'),        # Char class
-        (r''    , 'NEWLINE',    r'(\n)',                     r''),          # Line end
-        (r''    , 'SYMBOL',     r'(.)',                      r'')           # Single sym
+        (r""    , 'SKIPWS',     r"[ \t]+",                   r""),          # Skip ws
+        (r""    , 'SHORTOP',    r"(:\?|[|\-&*+()?:@,/_])",   r""),          # main ops
+        (r"\$\^", 'FUNC',       r"\w+",                      r"(?=\s*\()"), # Functions
+        (r"\$"  , 'VARIABLE',   r"\w+",                      r""),          # Variables
+        (r"<"   , 'WEIGHT',     r"[+-]?[0-9]*(\.[0-9]+)?",   r">"),         # Weight
+        (r"\{"  , 'RANGE',      r"\d+,(\d+)?|,?\d+",         r"\}"),        # {(m),(n)}
+        (r"\["  , 'CHAR_CLASS', r"\^?(\\]|[^\]])+",          r"\]"),        # Char class
+        (r""    , 'NEWLINE',    r"\n",                       r""),          # Line end
+        (r""    , 'SYMBOL',     r".",                        r"")           # Single sym
     ]
         tok_regex = '|'.join('%s(?P<%s>%s)%s' % mtch for mtch in token_regexes)
         line_num, line_start, res = 1, 0, []
@@ -187,10 +207,12 @@ class regexparse:
                 continue
             elif op == 'SHORTOP':
                 op = self.shortops[value]
+            elif op == 'PARAM':
+                value = value.replace(" ","").split('=')
             res.append((op, value, line_num, column))
         return res
 
-    def _addconc(self, tokens):
+    def _insert_invisibles(self, tokens):
         """Idiot hack or genius? We insert explicit CONCAT tokens before parsing.
 
            'I now avoid invisible infix operators almost entirely. I do remember a few
@@ -208,22 +230,33 @@ class regexparse:
             if token in resetters: # No, really, it is!
                 counter = 0
             result.append((token, value, line_num, column))
-        return result
+        # Add epsilon to rewrites, restrict with missing contexts, .e.g "(missing) _ #"
+        newresult, prevt = [], None
+        for token, value, line_num, column in result:
+            if ((token == 'COMMA' or token == 'PARAM') and prevt == 'PAIRUP') or \
+               (token == 'PAIRUP' and (prevt == 'CONTEXT' or prevt == 'COMMA')) or \
+               (token == 'RPAREN' and prevt == 'PAIRUP'):
+                newresult.append(('SYMBOL', "", line_num, column))
+            newresult.append((token, value, line_num, column))
+            prevt = token
+        return newresult
 
     def _error_report(self, errortype, errorstring, line_num, column):
         raise errortype(errorstring, ("", line_num, column, self.expression))
 
-    def parse(self, tokens):
+    def parse(self):
         """Attention! Those who don't speak reverse Polish will be shunted!
         'Simplicity is a great virtue but it requires hard work to achieve it and
         education to appreciate it. And to make matters worse: complexity sells better.'
         - E. Dijkstra """
         output, stack = [], []
-        for token, value, line_num, column in tokens:
+        for token, value, line_num, column in self.tokenized:
             if token in self.operands or token in self.unarypost:
                 output.append((token, value, line_num, column))
             elif token in self.unarypre or token == "FUNC" or token == "LPAREN":
                 stack.append((token, value, line_num, column))
+                #if token == "LPAREN":
+                #    output.append("STARTP")
             elif token == "RPAREN":
                 while True:
                     if not stack:
@@ -231,6 +264,7 @@ class regexparse:
                     if stack[-1][0] == 'LPAREN':
                         break
                     output.append(stack.pop())
+                #output.append("ENDP")
                 stack.pop()
                 if stack and stack[-1][0] == "FUNC":
                     output.append(stack.pop())
@@ -242,6 +276,47 @@ class regexparse:
         while stack:
             output.append(stack.pop())
         return output
+
+
+class PartitionRefinement:
+    """Basic partition refinement using dicts. A pared down version of D. Eppstein's
+       implementation. https://www.ics.uci.edu/~eppstein/PADS/PartitionRefinement.py"""
+
+    def __init__(self, S):
+        """Create a new partition refinement data structure for the given
+        items.  Initially, all items belong to the same subset.
+        """
+        self.sets = {id(s):s for s in S}
+        self.partition = {x:s for s in S for x in s}
+
+    def refine(self, S):
+        """Refine each set A in the partition to the two sets
+        A & S, A - S.  Return a list of pairs (A & S, A - S)
+        for each changed set.  Within each pair, A & S will be
+        a newly created set, while A - S will be a modified
+        version of an existing set in the partition.
+        Not a generator because we need to perform the partition
+        even if the caller doesn't iterate through the results.
+        """
+        hit = {}
+        output = []
+        for x in S:
+            if x in self.partition:
+                Ax = self.partition[x]
+                hit.setdefault(id(Ax), set()).add(x)
+        for A, AS in hit.items():
+            A = self.sets[A]
+            if AS != A:
+                self.sets[id(AS)] = AS
+                for x in AS:
+                    self.partition[x] = AS
+                A -= AS
+                output.append((id(AS), id(A)))
+        return output
+
+    def astuples(self):
+        """Get current partitioning and convert to set of tuples."""
+        return {tuple(s) for s in self.sets.values()}
 
 
 class FST:
@@ -275,7 +350,7 @@ class FST:
 
     @classmethod
     def rlg(cls, grammar, startsymbol):
-        """Compile a (wighted) right-linear grammar into an FST, similarly to lexc."""
+        """Compile a (weighted) right-linear grammar into an FST, similarly to lexc."""
         def _rlg_tokenize(w):
             if w == '':
                 return ['']
@@ -295,24 +370,25 @@ class FST:
         statedict["#"].finalweight = 0.0
         newfst.states = set(statedict.values())
 
-        for bigstate in statedict.keys() - {"#"}:
-            for rule in grammar[bigstate]:
-                currstate = statedict[bigstate]
+        for lexstate in statedict.keys() - {"#"}:
+            for rule in grammar[lexstate]:
+                currstate = statedict[lexstate]
                 lhs = (rule[0],) if isinstance(rule[0], str) else rule[0]
                 target = rule[1]
                 i = _rlg_tokenize(lhs[0])
                 o = i if len(lhs) == 1 else _rlg_tokenize(lhs[1])
-                newfst.alphabet |= {sym for sym in i + o}
+                newfst.alphabet |= {sym for sym in i + o if sym != ''}
                 for ii, oo, idx in itertools.zip_longest(i, o, range(max(len(i), len(o))),
                     fillvalue = ''):
                     w = 0.0
-                    if idx == max(len(i), len(o)) - 1: # dump weight on last transition
-                        targetstate = statedict[target]
+                    if idx == max(len(i), len(o)) - 1:  # dump weight on last transition
+                        targetstate = statedict[target] # before reaching another lexstate
                         w = 0.0 if len(rule) < 3 else float(rule[2])
                     else:
                         targetstate = State()
                         newfst.states.add(targetstate)
-                    currstate.add_transition(targetstate, (ii, oo), w)
+                    newtuple = (ii,) if ii == oo else (ii, oo)
+                    currstate.add_transition(targetstate, newtuple, w)
                     currstate = targetstate
         return newfst
 
@@ -333,13 +409,15 @@ class FST:
             targetstate.finalweight = weight
             self.initialstate.add_transition(targetstate, label, 0.0)
 
+    def __copy__(self):
+        return self.copy_filtered()[0]
 
     def __len__(self):
         return len(self.states)
 
     def __str__(self):
         """Generate an AT&T string representing the FST."""
-        # number states arbitrarily based on id()
+        # Number states arbitrarily based on id()
         ids = [id(s) for s in self.states if s != self.initialstate]
         statenums = {ids[i]:i+1 for i in range(len(ids))}
         statenums[id(self.initialstate)] = 0 # The initial state is always 0
@@ -374,14 +452,14 @@ class FST:
     def __matmul__(self, other):
         return self.compose(other)
 
-    def number_states(self):
+    def number_unnamed_states(self, force = False):
         cntr = itertools.count()
         ordered = [self.initialstate] + list(self.states - {self.initialstate})
-        return {id(s):(next(cntr) if s.name == None else s.name) for s in ordered}
+        return {id(s):(next(cntr) if s.name == None or force == True else s.name) for s in ordered}
 
     def harmonize_alphabet(func):
         @functools.wraps(func)
-        def wrapper_decorator(self, other):
+        def wrapper_decorator(self, other, **kwargs):
             for A, B in [(self, other), (other, self)]:
                 if '.' in A.alphabet and (A.alphabet - {'.'}) != (B.alphabet - {'.'}):
                     Aexpand = B.alphabet - A.alphabet - {'.', ''}
@@ -395,7 +473,7 @@ class FST:
                                 s.add_transition(t.targetstate, newl, t.weight)
 
             newalphabet = self.alphabet | other.alphabet
-            value = func(self, other)
+            value = func(self, other, **kwargs)
             # Do something after
             value.alphabet = newalphabet
             return value
@@ -467,13 +545,15 @@ class FST:
             s = '{0:.2f}'.format(num).rstrip('0').rstrip('.')
             s = '0' if s == '-0' else s
             return "/" + s
+        def _str_fmt(s): # Use greek lunate epsilon symbol U+03F5
+            return (sublabel if sublabel != '' else 'ϵ' for sublabel in s)
 
 #        g = graphviz.Digraph('FST', filename='fsm.gv')
 
         sigma = "Σ: {" + ','.join(sorted(a for a in self.alphabet)) + "}" \
             if show_alphabet else ""
         g = graphviz.Digraph('FST', graph_attr={ "label": sigma, "rankdir": "LR" })
-        statenums = self.number_states()
+        statenums = self.number_unnamed_states()
         if show_weights == False:
             if any(t.weight != 0.0 for _, _, t in self.all_transitions(self.states)) or \
                   any(s.finalweight != 0.0 for s in self.finalstates):
@@ -495,7 +575,7 @@ class FST:
                 if raw == True:
                     labellist = sorted((str(l) + '/' + str(w) for t, l, w in tlabelset))
                 else:
-                    labellist = sorted((':'.join(label) + _float_format(w) for _, label, w in tlabelset))
+                    labellist = sorted((':'.join(_str_fmt(label)) + _float_format(w) for _, label, w in tlabelset))
                 printlabel = ', '.join(labellist)
                 if s in self.finalstates:
                     sourcelabel = str(statenums[id(s)]) + _float_format(s.finalweight)
@@ -514,6 +594,17 @@ class FST:
             for label, transitions in state.transitions.items():
                 for t in transitions:
                     yield state, label, t
+
+    def all_transitions_by_label(self, states):
+        all_labels = {l for s in states for l in s.transitions.keys()}
+        for l in all_labels:
+            targets = set()
+            for state in states:
+                if l in state.transitions:
+                    for transition in state.transitions[l]:
+                        targets.add(transition.targetstate)
+            yield l, targets
+
 
     def scc(self):
         """Calculate the strongly connected components of an FST.
@@ -563,8 +654,8 @@ class FST:
         potentials = self.dijkstra_all()
         for s, _, t in self.all_transitions(self.states):
             t.weight += potentials[t.targetstate] - potentials[s]
-        for f in self.finalstates:
-            f.finalweight = f.finalweight - potentials[f]
+        for s in self.finalstates:
+            s.finalweight = s.finalweight - potentials[s]
         residualweight = potentials[self.initialstate]
         if residualweight != 0.0:
             # Add residual to all exits of initial state SCC and finals in that SCC
@@ -572,13 +663,27 @@ class FST:
             for s, _, t in self.all_transitions(mainscc):
                 if t.targetstate not in mainscc: # We're exiting the main SCC
                     t.weight += residualweight
-            for f in mainscc & self.finalstates: # Finals in initial SCC add res w
-                f.finalweight += residualweight
+            for s in mainscc & self.finalstates: # Add res w to finals in initial SCC
+                s.finalweight += residualweight
         return self
 
-    def copy_mod(self, modlabel = lambda l, w :l, modweight = lambda l, w: w):
+    def map_labels(self, map):
+        """Relabel a transducer with new labels from dictionary mapping."""
+        # Example: myfst.map_labels({'a':'', 'b':'a'})
+        for s in self.states:
+            newlabelings = []
+            for lbl in s.transitions.keys():
+                if any(l in lbl for l in map):
+                    newlabel = tuple(map[lbl[i]] if lbl[i] in map else lbl[i] for i in range(len(lbl)))
+                    newlabelings.append((lbl, newlabel))
+            for old, new in newlabelings:
+                s.rename_label(old, new)
+        self.alphabet = self.alphabet - map.keys() | set(map.values()) - {''}
+        return self
+
+    def copy_mod(self, modlabel = lambda l, w: l, modweight = lambda l, w: w):
         newfst = FST(alphabet = self.alphabet.copy())
-        q1q2 = {k:State() for k in self.states}
+        q1q2 = {k:State(name = k.name) for k in self.states}
         newfst.states = set(q1q2.values())
         newfst.finalstates = {q1q2[s] for s in self.finalstates}
         newfst.initialstate = q1q2[self.initialstate]
@@ -594,6 +699,8 @@ class FST:
     def copy_filtered(self, statefilter = lambda x: True, labelfilter = lambda x: True):
         newfst = FST(alphabet = self.alphabet.copy())
         q1q2 = {k:State() for k in self.states}
+        for s in self.states:
+            q1q2[s].name = s.name
         newfst.states = set(q1q2.values())
         newfst.finalstates = {q1q2[s] for s in self.finalstates}
         newfst.initialstate = q1q2[self.initialstate]
@@ -611,8 +718,8 @@ class FST:
         """Create new epsilon-free FSM equivalent to original."""
         # For each state s, figure out the min-cost w' to hop to a state t with epsilons
         # Then, add the (non-e) transitions of state t to s, adding w' to their cost
-        # Also, if t is final and s is not, make s final with cost q.final ⊗ w'
-        # If s and t are both final, make s's finalweight s.final ⊕ (q.final ⊗ w')
+        # Also, if t is final and s is not, make s final with cost t.finalweight ⊗ w'
+        # If s and t are both final, make s's finalweight s.final ⊕ (t.finalweight ⊗ w')
 
         eclosures = {s:self.epsilon_closure(s) for s in self.states}
         if all(len(ec) == 0 for ec in eclosures.values()): # bail, no epsilon transitions
@@ -666,7 +773,7 @@ class FST:
         return float("inf")
 
     def words(self):
-        """A generator to yield all words. Yay BFS!."""
+        """A generator to yield all words. Yay BFS!"""
         Q = deque([(self.initialstate, 0.0, [])])
         while Q:
             s, cost, seq = Q.popleft()
@@ -674,6 +781,20 @@ class FST:
                 yield cost + s.finalweight, seq
             for label, t in s.all_transitions():
                 Q.append((t.targetstate, cost + t.weight, seq + [label]))
+
+    def label_states_topology(self, mode = 'BFS'):
+        """Topologically sort and label states with numbers."""
+        cntr = itertools.count()
+        Q = deque([self.initialstate])
+        inqueue = {self.initialstate}
+        while Q:
+            s = Q.popleft() if mode == 'BFS' else Q.pop()
+            s.name = str(next(cntr))
+            for label, t in s.all_transitions():
+                if t.targetstate not in inqueue:
+                    Q.append(t.targetstate)
+                    inqueue.add(t.targetstate)
+        return self
 
     def words_nbest(self, n):
         return list(itertools.islice(self.words_cheapest(), n))
@@ -697,9 +818,9 @@ class FST:
         return self.determinize(staterep = lambda s, w: (s, 0.0), oplus = lambda *x: 0.0)
 
     def determinize_as_dfa(self):
-        """Determinize as a DFA with weight moved to label, then apply unweighted det."""
+        """Determinize as a DFA with weight as part of label, then apply unweighted det."""
         newfst = self.copy_mod(modlabel = lambda l, w: l + (w,), modweight = lambda l, w: 0.0)
-        determinized = newfst.determinize_unweighted() # det, and shift weights back
+        determinized = newfst.determinize_unweighted() # run det, then move weights back
         return determinized.copy_mod(modlabel = lambda l, _: l[:-1], modweight = lambda l, _: l[-1])
 
     def determinize(self, staterep = lambda s, w: (s, w), oplus = min):
@@ -733,7 +854,7 @@ class FST:
                     newstate = State()
                     statesets[newQ] = newstate
                     newfst.states.add(statesets[newQ])
-                    #statesets[newQ].name = str(newQ)
+                    #statesets[newQ].name = {(s.name, w) if w != 0.0 else s.name for s, w in newQ}
                 else:
                     newstate = statesets[newQ]
                 statesets[currentQ].add_transition(newstate, label, wprime)
@@ -744,12 +865,67 @@ class FST:
                         residuals[s] - wprime for s, t in tset if t.targetstate in self.finalstates)
         return newfst
 
+    def minimize_as_dfa(self):
+        """Minimize as a DFA with weight as part of label, then apply unweighted min."""
+        newfst = self.copy_mod(modlabel = lambda l, w: l + (w,), modweight = lambda l, w: 0.0)
+        minimized = newfst.minimize() # minimize, and shift weights back
+        return minimized.copy_mod(modlabel = lambda l, _: l[:-1], modweight = lambda l, _: l[-1])
+
     def minimize(self):
-        """Minimize, currently through Brzozowski."""
+        """Minimize FSM by constrained reverse subset construction, Hopcroft-ish."""
+        reverse_index = self.reverse_index()
+        finalset, nonfinalset = self.finalstates.copy(), self.states - self.finalstates
+        initialpartition = [x for x in (finalset, nonfinalset) if len(x) > 0]
+        P = PartitionRefinement(initialpartition)
+        Agenda = {id(x) for x in (finalset, nonfinalset) if len(x) > 0}
+        while Agenda:
+            S = P.sets[Agenda.pop()] # convert id to the actual set it corresponds to
+            for label, sourcestates in self.find_sourcestates(reverse_index, S):
+                splits = P.refine(sourcestates) # returns list of (A & S, A - S) tuples
+                Agenda |= {new for new, _ in splits} # Only place A & S on Agenda
+        equivalenceclasses = P.astuples()
+        if len(equivalenceclasses) == len(self.states):
+            return self # we were already minimal, no need to reconstruct
+        return self.mergestatesets(equivalenceclasses)
+
+    def mergestatesets(self, equivalenceclasses):
+        """Merge equivalent states given as a set of sets."""
+        eqmap = {s[i]:s[0] for s in equivalenceclasses for i in range(len(s))}
+        representerstates = set(eqmap.values())
+        newfst = FST(alphabet = self.alphabet.copy())
+        statemap = {s:State() for s in self.states if s in representerstates}
+        newfst.initialstate = statemap[eqmap[self.initialstate]]
+        for s, lbl, t in self.all_transitions(self.states):
+            if s in representerstates:
+                statemap[s].add_transition(statemap[eqmap[t.targetstate]], lbl, t.weight)
+        newfst.states = set(statemap.values())
+        newfst.finalstates = {statemap[s] for s in self.finalstates if s in representerstates}
+        for s in self.finalstates:
+            if s in representerstates:
+                statemap[s].finalweight = s.finalweight
+        return newfst
+
+    def find_sourcestates(self, index, stateset):
+        all_labels = {l for s in stateset for l in index[s].keys()}
+        for l in all_labels:
+            sources = set()
+            for state in stateset:
+                if l in index[state]:
+                    sources |= index[state][l]
+            yield l, sources
+
+    def reverse_index(self):
+        idx = {s:{} for s in self.states}
+        for s, lbl, t in self.all_transitions(self.states):
+            idx[t.targetstate][lbl] = idx[t.targetstate].get(lbl, set()) | {s}
+        return idx
+
+    def minimize_brz(self):
+        """Minimize through Brzozowski's trick."""
         return self.epsilon_remove().reverse().determinize().reverse().determinize()
 
     def kleene_closure(self, mode = 'star'):
-        """T1*. No epsilons here."""
+        """self*. No epsilons here."""
         q1 = {k:State() for k in self.states}
         newfst = FST(alphabet = self.alphabet.copy())
 
@@ -816,10 +992,12 @@ class FST:
         return newfst
 
     @harmonize_alphabet
-    def cross_product(self, other):
+    def cross_product(self, other, optional = False):
         """Perform the cross-product of T1, T2 through composition."""
         newfst_a =  self.copy_mod(modlabel = lambda l, _: l + ('',))
         newfst_b = other.copy_mod(modlabel = lambda l, _: ('',) + l)
+        if optional == True:
+            return newfst_a.compose(newfst_b).union(self)
         return newfst_a.compose(newfst_b)
 
     @harmonize_alphabet
@@ -843,6 +1021,7 @@ class FST:
         while Q:
             A, B, mode = Q.pop()
             currentstate = S[(A, B, mode)]
+            currentstate.name = "({},{},{})".format(A.name, B.name, mode)
             if A in self.finalstates and B in other.finalstates:
                 newfst.finalstates.add(currentstate)
                 currentstate.finalweight = A.finalweight + B.finalweight # TODO: oplus
@@ -890,16 +1069,58 @@ class FST:
 
     def ignore(self, other):
         """A, ignoring intevening instances of B."""
-        #  A @ $^proj-1(.|'':B)
+        #  A @ $^proj-1(('.'|'':B)*)
         return self.compose(FST(label = ('.',)).union(FST(label = ('',)).\
                cross_product(other)).kleene_closure()).project(-1)
 
-    def project(self, dim):
-        """Let's project. dim = -1 will get output proj regardless of # of tapes."""
+    def rewrite(self, *contexts, **flags):
+        """Rewrite self in contexts in parallel, controlled by flags."""
+        defs = {'crossproducts': self}
+        defs['aux'] = FST.regex(". - ('@<@'|'@>@'|#)")
+        defs['base'] = FST.regex("# ($aux | '@<@' $crossproducts '@>@')* #", defs)
+        if len(contexts) > 0:
+            center = FST.regex("'@<@' (.-'@>@')* '@>@'")
+            br = FST.regex("'@<@'|'@>@'")
+            lrpairs = ([l.ignore(br), r.ignore(br)] for l,r in contexts)
+            constraincontext = center.context_restrict(*lrpairs)
+            defs['rule'] = constraincontext.compose(base)
+        else:
+            defs['rule'] = defs['base']
+        # we need the regex to avoid more than one zero rewrite in a row
+        defs['rule'] = FST.regex(".*-(.* '@<@' '@>@' '@<@' '@>@' .*) @ $rule", defs)
+        defs['remrewr'] = FST.regex("'@<@':'' (.-'@>@')* '@>@':''") # worsener
+        defs['worsener'] = FST.regex(".* $remrewr (.|$remrewr)*", defs)
+        if flags.get('longest', False) == 'True':
+            defs['anybr'] = FST.regex("'@<@':'' | '@>@':'' | '':'@<@' | '':'@>@' | $aux", defs)
+            defs['longest'] = FST.regex(".* '@<@' $aux* '':('@>@' '@<@'?) $aux $anybr* .*", defs)
+            defs['worsener'] = FST.regex("$worsener | $longest", defs)
+        defs['rewr'] = FST.regex("$^project($^project($rule,dim=0) @ $worsener, dim=-1)", defs)
+        final = FST.regex("(.* - $rewr) @ $rule", defs)
+        return final.map_labels({s:'' for s in ['@<@','@>@','#']}).epsilon_remove().trim().minimize()
+
+    def context_restrict(self, *contexts):
+        """self only allowed in the context L1 _ R1, or ... , or  L_n _ R_n."""
+        for fsm in itertools.chain.from_iterable(contexts):
+            fsm.alphabet.add('@=@') # Add aux sym to contexts so they don't match .
+        self.alphabet.add('@=@')    # Same for self
+        cs = (FST.regex("$lc '@=@' (.-'@=@')* '@=@' $rc", {'lc':lc, 'rc':rc}) for lc, rc in contexts)
+        cunion = functools.reduce(lambda x, y: x.union(y), cs).determinize().minimize()
+        r = FST.regex("(.-'@=@')* '@=@' $c '@=@' (.-'@=@')* - ((.-'@=@')* $cunion (.-'@=@')*)",\
+                       {'c':self, 'cunion':cunion})
+        r = r.map_labels({'@=@':''}).epsilon_remove().determinize_as_dfa().minimize()
+        for fsm in itertools.chain.from_iterable(contexts):
+            fsm.alphabet -= {'@=@'} # Remove aux syms from contexts
+        return FST.regex('.* - $r', {'r':r})
+
+    def project(self, dim = 0):
+        """Let's project! dim = -1 will get output proj regardless of # of tapes."""
+        sl = slice(-1, None) if dim == -1 else slice(dim, dim+1)
         for s in self.states:
             newtransitions = {}
             for lbl, tr in s.transitions.items():
-                newtransitions[lbl[dim]] = newtransitions.get(lbl[dim], set()) | tr
+                newtransitions[lbl[sl]] = newtransitions.get(lbl[sl], set()) | tr
+                for t in tr:
+                    t.label = lbl[sl]
             s.transitions = newtransitions
         return self
 
@@ -919,51 +1140,57 @@ class FST:
             mapping[t.targetstate].add_transition(mapping[s], lbl, t.weight)
             if t.targetstate in self.finalstates:
                 newfst.initialstate.add_transition(mapping[s], lbl, t.weight + \
-                t.targetstate.finalweight)
+                                                   t.targetstate.finalweight)
+        return newfst
+
+    def reverse_e(self):
+        """Reversal of FST, using epsilons."""
+        newfst = FST(alphabet = self.alphabet.copy())
+        newfst.initialstate = State(name = tuple(k.name for k in self.finalstates))
+        mapping = {k:State(name = k.name) for k in self.states}
+        for t in self.finalstates:
+            newfst.initialstate.add_transition(mapping[t], ('',), t.finalweight)
+
+        for s, lbl, t in self.all_transitions(self.states):
+            mapping[t.targetstate].add_transition(mapping[s], lbl, t.weight)
+
+        newfst.states = set(mapping.values()) | {newfst.initialstate}
+        newfst.finalstates = {mapping[self.initialstate]}
+        mapping[self.initialstate].finalweight = 0.0
         return newfst
 
     @harmonize_alphabet
     def union(self, other):
-        q1, q2 = {k:State() for k in self.states}, {k:State() for k in other.states}
-        newfst = FST()
-        newfst.states = set(q1.values()) | set(q2.values()) | {newfst.initialstate}
-
-        for lbl, t in self.initialstate.all_transitions():
-            newfst.initialstate.add_transition(q1[t.targetstate], lbl, t.weight)
-
-        for lbl, t in other.initialstate.all_transitions():
-            newfst.initialstate.add_transition(q2[t.targetstate], lbl, t.weight)
-
-        for s, lbl, t in self.all_transitions(self.states):
-            q1[s].add_transition(q1[t.targetstate], lbl, t.weight)
-
-        for s, lbl, t in other.all_transitions(other.states):
-            q2[s].add_transition(q2[t.targetstate], lbl, t.weight)
-
-        for s in self.finalstates:
-            newfst.finalstates.add(q1[s])
-            q1[s].finalweight = s.finalweight
-
-        for s in other.finalstates:
-            newfst.finalstates.add(q2[s])
-            q2[s].finalweight = s.finalweight
-
-        newfst.finalstates = {q1[s] for s in self.finalstates} | {q2[s] for s in other.finalstates}
+        """Epsilon-free calculation of union of self and other."""
+        mapping = {k:State() for k in self.states|other.states}
+        newfst = FST() # Get new initial state
+        newfst.states = set(mapping.values()) | {newfst.initialstate}
+        # Copy all transitions from old initial states to new initial state
+        for lbl, t in itertools.chain(self.initialstate.all_transitions(), other.initialstate.all_transitions()):
+            newfst.initialstate.add_transition(mapping[t.targetstate], lbl, t.weight)
+        # Also add all transitions from old FSMs to new FSM
+        for s, lbl, t in itertools.chain(self.all_transitions(self.states), other.all_transitions(other.states)):
+            mapping[s].add_transition(mapping[t.targetstate], lbl, t.weight)
+        # Make old final states final in new FSM
+        for s in self.finalstates | other.finalstates:
+            newfst.finalstates.add(mapping[s])
+            mapping[s].finalweight = s.finalweight
+        # If either initial state was final, make new initial final w/ weight min(f1w, f2w)
+        newfst.finalstates = {mapping[s] for s in self.finalstates|other.finalstates}
         if self.initialstate in self.finalstates or other.initialstate in other.finalstates:
             newfst.finalstates.add(newfst.initialstate)
-            newfst.initialstate.finalweight = min(self.initialstate.finalweight, \
-                                                  other.initialstate.finalweight)
+            newfst.initialstate.finalweight = min(self.initialstate.finalweight, other.initialstate.finalweight)
 
         return newfst
 
-    @harmonize_alphabet
     def intersection(self, other):
         return self.product(other, finalf = all, oplus = operator.add, pathfollow = lambda x,y: x & y)
 
-    @harmonize_alphabet
     def difference(self, other):
-        return self.product(other, finalf = lambda x: x[0] and not x[1], oplus = lambda x,y: x)
+        return self.product(other, finalf = lambda x: x[0] and not x[1],\
+                           oplus = lambda x,y: x, pathfollow = lambda x,y: x)
 
+    @harmonize_alphabet
     def product(self, other, finalf = any, oplus = min, pathfollow = lambda x,y: x|y):
         newfst = FST()
         Q = deque([(self.initialstate, other.initialstate)])
@@ -972,6 +1199,7 @@ class FST:
         while Q:
             t1s, t2s = Q.pop()
             currentstate = S[(t1s, t2s)]
+            currentstate.name = (t1s.name, t2s.name,)
             if finalf((t1s in self.finalstates, t2s in other.finalstates)):
                 newfst.finalstates.add(currentstate)
                 currentstate.finalweight = oplus(t1s.finalweight, t2s.finalweight)
@@ -1024,6 +1252,12 @@ class State:
                 for t in newtrans:
                     self._transitionsout[label[-1]] |= {(label, t)}
         return self._transitionsout
+
+    def rename_label(self, original, new):
+        for t in self.transitions[original]:
+            t.label = new
+        self.transitions[new] = self.transitions.get(new, set()) | self.transitions[original]
+        self.transitions.pop(original)
 
     def remove_transitions_to_targets(self, targets):
         """Remove all transitions from self to any state in the set targets."""
