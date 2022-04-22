@@ -6,13 +6,16 @@ class regexparse:
     shortops = {'|':'UNION', '-':'MINUS', '&':'INTERSECTION', '*':'STAR', '+':'PLUS',
                 '(':'LPAREN', ')':'RPAREN', '?':'OPTIONAL', ':':'CP', ':?': 'CPOPTIONAL',
                 '~':"COMPLEMENT", '@':"COMPOSE", ',': 'COMMA', '/':'CONTEXT', '_':'PAIRUP'}
-    builtins = {'reverse': lambda x: FST.reverse(x), 'invert':lambda x: FST.invert(x),
-                'minimize': lambda x: FST.minimize(x), 'determinize': lambda x:\
-                FST.determinize(x), 'ignore': lambda x,y: FST.ignore(x,y), 'rewrite':\
-                lambda *args, **kwargs: FST.rewrite(*args, **kwargs), 'restrict':\
-                lambda *args, **kwargs: FST.context_restrict(*args, **kwargs),
-                'project': lambda *args, **kwargs: FST.project(*args, dim = \
-                int(kwargs.get('dim', '-1')))}
+    builtins = {'reverse': lambda x: FST.reverse(x),
+                'invert':lambda x: FST.invert(x),
+                'minimize': lambda x: FST.minimize(x),
+                'determinize': lambda x: FST.determinize(x),
+                'ignore': lambda x,y: FST.ignore(x,y),
+                'rewrite': lambda *args, **kwargs: FST.rewrite(*args, **kwargs),
+                'restrict': lambda *args, **kwargs: FST.context_restrict(*args, **kwargs),
+                'project': lambda *args, **kwargs: FST.project(*args, dim = int(kwargs.get('dim', '-1'))),
+                'input': lambda x: FST.project(x, dim = 0),
+                'output': lambda x: FST.project(x, dim = -1)}
     precedence = {"FUNC": 11, "COMMA":1, "PARAM":1, "COMPOSE":3, "UNION":5, "INTERSECTION":5,
                   "MINUS":5, "CONCAT":6, "STAR":9, "PLUS":9, "OPTIONAL":9, "WEIGHT":9,
                   "CP":10, "CPOPTIONAL":10, "RANGE":9, "CONTEXT":1, "PAIRUP":2}
@@ -118,7 +121,7 @@ class regexparse:
                 _append(stack, _pop(stack).union(_pop(stack)))
             elif op == 'MINUS':
                 arg2, arg1 = _pop(stack), _pop(stack)
-                _append(stack, arg1.difference(arg2.determinize()))
+                _append(stack, arg1.difference(arg2.determinize_unweighted()))
             elif op == 'INTERSECTION':
                 _append(stack, _pop(stack).intersection(_pop(stack)).coaccessible())
             elif op == 'CONCAT':
@@ -222,8 +225,8 @@ class regexparse:
         resetters = self.operators - self.unarypost
         counter, result = 0, []
         for token, value, line_num, column in tokens: # It's a two-state FST!
-            if counter == 1 and token in {"LPAREN", "COMPLEMENT"} | self.operands:
-                result.append(("CONCAT", '', line_num, column))
+            if counter == 1 and token in {'LPAREN', 'COMPLEMENT'} | self.operands:
+                result.append(('CONCAT', '', line_num, column))
                 counter = 0
             if token in self.operands:
                 counter = 1
@@ -236,7 +239,7 @@ class regexparse:
             if ((token == 'COMMA' or token == 'PARAM') and prevt == 'PAIRUP') or \
                (token == 'PAIRUP' and (prevt == 'CONTEXT' or prevt == 'COMMA')) or \
                (token == 'RPAREN' and prevt == 'PAIRUP'):
-                newresult.append(('SYMBOL', "", line_num, column))
+                newresult.append(('SYMBOL', '', line_num, column))
             newresult.append((token, value, line_num, column))
             prevt = token
         return newresult
@@ -279,6 +282,7 @@ class regexparse:
 
 
 class PartitionRefinement:
+
     """Basic partition refinement using dicts. A pared down version of D. Eppstein's
        implementation. https://www.ics.uci.edu/~eppstein/PADS/PartitionRefinement.py"""
 
@@ -1076,41 +1080,49 @@ class FST:
     def rewrite(self, *contexts, **flags):
         """Rewrite self in contexts in parallel, controlled by flags."""
         defs = {'crossproducts': self}
-        defs['aux'] = FST.regex(". - ('@<@'|'@>@'|#)")
-        defs['base'] = FST.regex("# ($aux | '@<@' $crossproducts '@>@')* #", defs)
+        defs['br'] = FST.regex("'@<@'|'@>@'")
+        defs['aux'] = FST.regex(". - ($br|#)", defs)
+        defs['dotted'] = FST.regex(".*-(.* '@<@' '@>@' '@<@' '@>@' .*)")
+        defs['base'] = FST.regex("$dotted @ # ($aux | '@<@' $crossproducts '@>@')* #", defs)
         if len(contexts) > 0:
             center = FST.regex("'@<@' (.-'@>@')* '@>@'")
-            br = FST.regex("'@<@'|'@>@'")
-            lrpairs = ([l.ignore(br), r.ignore(br)] for l,r in contexts)
-            constraincontext = center.context_restrict(*lrpairs)
-            defs['rule'] = constraincontext.compose(base)
+            lrpairs = ([l.ignore(defs['br']), r.ignore(defs['br'])] for l,r in contexts)
+            defs['rule'] = center.context_restrict(*lrpairs, rewrite = True).compose(defs['base'])
         else:
             defs['rule'] = defs['base']
-        # we need the regex to avoid more than one zero rewrite in a row
-        defs['rule'] = FST.regex(".*-(.* '@<@' '@>@' '@<@' '@>@' .*) @ $rule", defs)
         defs['remrewr'] = FST.regex("'@<@':'' (.-'@>@')* '@>@':''") # worsener
-        defs['worsener'] = FST.regex(".* $remrewr (.|$remrewr)*", defs)
+        worseners = [FST.regex(".* $remrewr (.|$remrewr)*", defs)]
         if flags.get('longest', False) == 'True':
-            defs['anybr'] = FST.regex("'@<@':'' | '@>@':'' | '':'@<@' | '':'@>@' | $aux", defs)
-            defs['longest'] = FST.regex(".* '@<@' $aux* '':('@>@' '@<@'?) $aux $anybr* .*", defs)
-            defs['worsener'] = FST.regex("$worsener | $longest", defs)
-        defs['rewr'] = FST.regex("$^project($^project($rule,dim=0) @ $worsener, dim=-1)", defs)
+            worseners.append(FST.regex(".* '@<@' $aux+ '':('@>@' '@<@'?) $aux ($br:''|'':$br|$aux)* .*", defs))
+        if flags.get('leftmost', False) == 'True':
+            worseners.append(FST.regex(\
+                 ".* '@<@':'' $aux+ ('':'@<@' $aux* '':'@>@' $aux+ '@>@':'' .* | '':'@<@' $aux* '@>@':'' $aux* '':'@>@' .*)", defs))
+        if flags.get('shortest', False) == 'True':
+            worseners.append(FST.regex(".* '@<@' $aux* '@>@':'' $aux+ '':'@>@' .*", defs))
+        defs['worsen'] = functools.reduce(lambda x, y: x.union(y), worseners).determinize_unweighted().minimize()
+        defs['rewr'] = FST.regex("$^project($^project($rule,dim=0) @ $worsen, dim=-1)", defs)
         final = FST.regex("(.* - $rewr) @ $rule", defs)
-        return final.map_labels({s:'' for s in ['@<@','@>@','#']}).epsilon_remove().trim().minimize()
+        return final.map_labels({s:'' for s in ['@<@','@>@','#']}).epsilon_remove().determinize_as_dfa().minimize()
 
-    def context_restrict(self, *contexts):
+    def context_restrict(self, *contexts, rewrite = False):
         """self only allowed in the context L1 _ R1, or ... , or  L_n _ R_n."""
         for fsm in itertools.chain.from_iterable(contexts):
             fsm.alphabet.add('@=@') # Add aux sym to contexts so they don't match .
         self.alphabet.add('@=@')    # Same for self
-        cs = (FST.regex("$lc '@=@' (.-'@=@')* '@=@' $rc", {'lc':lc, 'rc':rc}) for lc, rc in contexts)
+        if not rewrite:
+            cs = (FST.regex("$lc '@=@' (.-'@=@')* '@=@' $rc", \
+                 {'lc':lc.copy_mod().map_labels({'#': '@#@'}),\
+                 'rc':rc.copy_mod().map_labels({'#': '@#@'})}) for lc, rc in contexts)
+        else:
+            cs = (FST.regex("$lc '@=@' (.-'@=@')* '@=@' $rc", {'lc':lc, 'rc':rc}) for lc, rc in contexts)
         cunion = functools.reduce(lambda x, y: x.union(y), cs).determinize().minimize()
         r = FST.regex("(.-'@=@')* '@=@' $c '@=@' (.-'@=@')* - ((.-'@=@')* $cunion (.-'@=@')*)",\
                        {'c':self, 'cunion':cunion})
         r = r.map_labels({'@=@':''}).epsilon_remove().determinize_as_dfa().minimize()
         for fsm in itertools.chain.from_iterable(contexts):
             fsm.alphabet -= {'@=@'} # Remove aux syms from contexts
-        return FST.regex('.* - $r', {'r':r})
+        r = FST.regex(".? (.-'@#@')* .? - $r", {'r': r})
+        return r.map_labels({'@#@':''}).epsilon_remove().determinize_as_dfa().minimize()
 
     def project(self, dim = 0):
         """Let's project! dim = -1 will get output proj regardless of # of tapes."""
