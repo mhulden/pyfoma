@@ -1127,13 +1127,16 @@ class FST:
     def project(self, dim = 0):
         """Let's project! dim = -1 will get output proj regardless of # of tapes."""
         sl = slice(-1, None) if dim == -1 else slice(dim, dim+1)
+        newalphabet = set()
         for s in self.states:
             newtransitions = {}
             for lbl, tr in s.transitions.items():
                 newtransitions[lbl[sl]] = newtransitions.get(lbl[sl], set()) | tr
                 for t in tr:
                     t.label = lbl[sl]
+                    newalphabet |= {sublabel for sublabel in lbl[sl]}
             s.transitions = newtransitions
+        self.alphabet = newalphabet
         return self
 
     def reverse(self):
