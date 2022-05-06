@@ -173,8 +173,8 @@ class regexparse:
                 charranges, negated = self.character_class_parse(value)
                 _append(stack, FST.character_ranges(charranges, complement = negated))
         if len(stack) != 1: # If there's still stuff on the stack, that's a syntax error
-            self._error_report(SyntaxError, "Something's happening here, and what it is ain't \
-                                             exactly clear...", 1, 0)
+            self._error_report(SyntaxError,\
+              "Something's happening here, and what it is ain't exactly clear...", 1, 0)
         return _pop(stack).trim().epsilon_remove().push_weights().determinize_as_dfa().minimize_as_dfa().label_states_topology().cleanup_sigma()
 
     def tokenize(self):
@@ -281,6 +281,34 @@ class regexparse:
         return output
 
 
+class Paradigm:
+
+    def __init__(self, grammar, regexfilter, tagfilter = lambda x: x.startswith('[') and x.endswith(']')):
+        """Extract a 'paradigm' from a grammar FST. Available as a list in attr para."""
+        self.FSM = grammar
+        self.regexfilter = regexfilter # a regex used for filtering input side
+        self.tagfilter = tagfilter # func to identify tags vs. other symbols
+        self.tables = {} # indexed by citation form of lexeme
+        self.filtered = FST.regex(regexfilter + " @ $grammar", {'grammar': grammar})
+        self.words = self.filtered.words()
+        para = []
+        for weight, pairlist in self.words:
+            lemma, tags, output = [], [], []
+            for i, o in pairlist:
+                if tagfilter(i):
+                    tags.append(i)
+                else:
+                    lemma.append(i)
+                output.append(o)
+            para.append([''.join(lemma), ''.join(tags), ''.join(output)])
+        self.para = sorted(para)
+
+    def __str__(self):
+        """Return a formatted table with lemma, tags, wordform."""
+        maxlens = (max(len(w) for w in cols) for cols in zip(*self.para)) # max for each col
+        fmtstr = "".join("{:<" + str(ml+2) + "}" for ml in maxlens) + "\n"
+        return "".join(fmtstr.format(*cols) for cols in self.para)
+
 class PartitionRefinement:
 
     """Basic partition refinement using dicts. A pared down version of D. Eppstein's
@@ -351,6 +379,11 @@ class FST:
         """Compile a regular expression and return the resulting FST."""
         myregex = regexparse(regularexpression, defined, functions)
         return myregex.compiled
+
+    @classmethod
+    def from_strings(cls, strings):
+        Grammar = {"Start":((w, "#") for w in strings)}
+        return FST.rlg(Grammar, "Start").determinize_as_dfa().minimize().label_states_topology()
 
     @classmethod
     def rlg(cls, grammar, startsymbol):
@@ -567,11 +600,15 @@ class FST:
         g.attr('node', shape='doublecircle', style = 'filled')
         for s in self.finalstates:
             g.node(str(statenums[id(s)]) + _float_format(s.finalweight))
+            if s == self.initialstate:
+                g.node(str(statenums[id(s)]) + _float_format(s.finalweight), style = 'filled, bold')
 
         g.attr('node', shape='circle', style = 'filled')
         for s in self.states:
             if s not in self.finalstates:
                 g.node(str(statenums[id(s)]), shape='circle', style = 'filled')
+                if s == self.initialstate:
+                    g.node(str(statenums[id(s)]), shape='circle', style = 'filled, bold')
             grouped_targets = defaultdict(set) # {states}
             for label, t in s.all_transitions():
                 grouped_targets[t.targetstate] |= {(t.targetstate, label, t.weight)}
@@ -1072,10 +1109,8 @@ class FST:
         return self
 
     def ignore(self, other):
-        """A, ignoring intevening instances of B."""
-        #  A @ $^proj-1(('.'|'':B)*)
-        return self.compose(FST(label = ('.',)).union(FST(label = ('',)).\
-               cross_product(other)).kleene_closure()).project(-1)
+        """A, ignoring intervening instances of B."""
+        return FST.regex("$^output($A @ ('.'|'':$B)*)", {'A': self, 'B': other})
 
     def rewrite(self, *contexts, **flags):
         """Rewrite self in contexts in parallel, controlled by flags."""
@@ -1100,7 +1135,7 @@ class FST:
         if flags.get('shortest', False) == 'True':
             worseners.append(FST.regex(".* '@<@' $aux* '@>@':'' $aux+ '':'@>@' .*", defs))
         defs['worsen'] = functools.reduce(lambda x, y: x.union(y), worseners).determinize_unweighted().minimize()
-        defs['rewr'] = FST.regex("$^project($^project($rule,dim=0) @ $worsen, dim=-1)", defs)
+        defs['rewr'] = FST.regex("$^output($^input($rule) @ $worsen)", defs)
         final = FST.regex("(.* - $rewr) @ $rule", defs)
         return final.map_labels({s:'' for s in ['@<@','@>@','#']}).epsilon_remove().determinize_as_dfa().minimize()
 
