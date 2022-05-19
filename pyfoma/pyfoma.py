@@ -1,5 +1,18 @@
+#!/usr/bin/env python
+
+"""PyFoma Finite-State Tool."""
+
 import heapq, operator, itertools, re, functools
 from collections import deque, defaultdict
+
+__author__     = "Mans Hulden"
+__copyright__  = "Copyright 2022"
+__credits__    = ["Mans Hulden"]
+__license__    = "Apache"
+__version__    = "2.0"
+__maintainer__ = "Mans Hulden"
+__email__      = "mans.hulden@gmail.com"
+__status__     = "Prototype"
 
 class regexparse:
 
@@ -289,12 +302,16 @@ class Paradigm:
         self.regexfilter = regexfilter # a regex used for filtering input side
         self.tagfilter = tagfilter # func to identify tags vs. other symbols
         self.tables = {} # indexed by citation form of lexeme
-        self.filtered = FST.regex(regexfilter + " @ $grammar", {'grammar': grammar})
+        self.filtered = FST.re(regexfilter + " @ $grammar", {'grammar': grammar})
         self.words = self.filtered.words()
         para = []
         for weight, pairlist in self.words:
             lemma, tags, output = [], [], []
-            for i, o in pairlist:
+            for io in pairlist:
+                if len(io) == 1:
+                    i, o = io[0], io[0]
+                else:
+                    i, o = io[0], io[-1]
                 if tagfilter(i):
                     tags.append(i)
                 else:
@@ -379,6 +396,8 @@ class FST:
         """Compile a regular expression and return the resulting FST."""
         myregex = regexparse(regularexpression, defined, functions)
         return myregex.compiled
+
+    re = regex
 
     @classmethod
     def from_strings(cls, strings):
@@ -585,6 +604,7 @@ class FST:
         def _str_fmt(s): # Use greek lunate epsilon symbol U+03F5
             return (sublabel if sublabel != '' else 'ϵ' for sublabel in s)
 
+
 #        g = graphviz.Digraph('FST', filename='fsm.gv')
 
         sigma = "Σ: {" + ','.join(sorted(a for a in self.alphabet)) + "}" \
@@ -626,7 +646,7 @@ class FST:
                     targetlabel = str(statenums[id(target)]) + _float_format(target.finalweight)
                 else:
                     targetlabel = str(statenums[id(target)])
-                g.edge(sourcelabel, targetlabel, label = printlabel)
+                g.edge(sourcelabel, targetlabel, label = graphviz.nohtml(printlabel))
         display(graphviz.Source(g))
 
     def all_transitions(self, states):
@@ -794,23 +814,23 @@ class FST:
         return explored
 
     def dijkstra_all(self):
-        return {s:self.dijkstra(s, State.all_targets_cheapest) for s in self.states}
+        return {s:self.dijkstra(s) for s in self.states}
 
-    def dijkstra(self, state, explorermethod):
+    def dijkstra(self, state):
         """The cost of the cheapest path from state to a final state. Go Edsger!"""
         explored, cntr = {state}, itertools.count()  # decrease-key is for wusses
-        q = [(0.0, next(cntr), state)]
-        while q:
-            w, _ , s = heapq.heappop(q) # Middle is dummy cntr to avoid key ties
+        Q = [(0.0, next(cntr), state)] # Middle is dummy cntr to avoid key ties
+        while Q:
+            w, _ , s = heapq.heappop(Q)
             if s == None:       # First None we pull out is the lowest-cost exit
                 return w
             explored.add(s)
             if s in self.finalstates:
                 # now we push a None state to signal the exit from a final
-                heapq.heappush(q, (w + s.finalweight, next(cntr), None))
-            for trgt, cost in explorermethod(s).items():
+                heapq.heappush(Q, (w + s.finalweight, next(cntr), None))
+            for trgt, cost in s.all_targets_cheapest().items():
                 if trgt not in explored:
-                    heapq.heappush(q, (cost + w, next(cntr), trgt))
+                    heapq.heappush(Q, (cost + w, next(cntr), trgt))
         return float("inf")
 
     def words(self):
@@ -853,6 +873,49 @@ class FST:
                     heapq.heappush(Q, (cost + s.finalweight, next(cntr), None, seq))
                 for label, t in s.all_transitions():
                     heapq.heappush(Q, (cost + t.weight, next(cntr), t.targetstate, seq + [label]))
+
+    def tokenize_against_alphabet(self, word):
+        tokens = []
+        start = 0
+        while start < len(word):
+            t = word[start] # Default is length 1 token unless we find a longer one
+            for length in range(1, len(word) - start + 1): # TODO: limit to max length
+                if word[start:start+length] in self.alphabet: # of syms in alphabet
+                    t = word[start:start+length]
+            tokens.append(t)
+            start += len(t)
+        return tokens
+
+    def generate(self, word, weights = False):
+        yield from self.apply(word, inverse = False, weights = weights)
+
+    def analyze(self, word, weights = False):
+        yield from self.apply(word, inverse = True, weights = weights)
+
+    def apply(self, word, inverse = False, weights = False):
+        IN, OUT = [-1, 0] if inverse else [0, -1] # Tuple positions for input, output
+        cntr = itertools.count()
+        w = self.tokenize_against_alphabet(word)
+        Q, output = [], []
+        heapq.heappush(Q, (0.0, 0, next(cntr), [], self.initialstate)) # (cost, -pos, output, state)
+        while Q:
+            cost, negpos, _, output, state = heapq.heappop(Q)
+            if state == None and -negpos == len(w):
+                if weights == False:
+                    yield ''.join(output)
+                else:
+                    yield (''.join(output), cost)
+            elif state != None:
+                if state in self.finalstates:
+                    heapq.heappush(Q, (cost + state.finalweight, negpos, next(cntr), output, None))
+                for lbl, t in state.all_transitions():
+                    if lbl[IN] == '':
+                        heapq.heappush(Q, (cost + t.weight, negpos, next(cntr), output + [lbl[OUT]], t.targetstate))
+                    elif -negpos < len(w):
+                        nextsym = w[-negpos] if w[-negpos] in self.alphabet else '.'
+                        appendedsym = w[-negpos] if nextsym == '.' else lbl[OUT]
+                        if nextsym == lbl[IN]:
+                            heapq.heappush(Q, (cost + t.weight, negpos - 1, next(cntr), output + [appendedsym], t.targetstate))
 
     def determinize_unweighted(self):
         """Determinize with all zero weights."""
@@ -1047,10 +1110,14 @@ class FST:
 
         def _mergetuples(x, y):
             if len(x) == 1:
-                return x + y[1:]
+                t = x + y[1:]
             elif len(y) == 1:
-                return x[:-1] + y
-            return x[:-1] + y[1:]
+                t = x[:-1] + y
+            else:
+                t = x[:-1] + y[1:]
+            if all(t[i] == t[0] for i in range(len(t))):
+                t = (t[0],)
+            return t
 
         # Mode 0: allow A=x:0 B=0:y (>0), A=x:y B=y:z (>0), A=x:0 B=wait (>1) A=wait 0:y (>2)
         # Mode 1: x:0 B=wait (>1), x:y y:z (>0)
@@ -1110,33 +1177,33 @@ class FST:
 
     def ignore(self, other):
         """A, ignoring intervening instances of B."""
-        return FST.regex("$^output($A @ ('.'|'':$B)*)", {'A': self, 'B': other})
+        return FST.re("$^output($A @ ('.'|'':$B)*)", {'A': self, 'B': other})
 
     def rewrite(self, *contexts, **flags):
         """Rewrite self in contexts in parallel, controlled by flags."""
         defs = {'crossproducts': self}
-        defs['br'] = FST.regex("'@<@'|'@>@'")
-        defs['aux'] = FST.regex(". - ($br|#)", defs)
-        defs['dotted'] = FST.regex(".*-(.* '@<@' '@>@' '@<@' '@>@' .*)")
-        defs['base'] = FST.regex("$dotted @ # ($aux | '@<@' $crossproducts '@>@')* #", defs)
+        defs['br'] = FST.re("'@<@'|'@>@'")
+        defs['aux'] = FST.re(". - ($br|#)", defs)
+        defs['dotted'] = FST.re(".*-(.* '@<@' '@>@' '@<@' '@>@' .*)")
+        defs['base'] = FST.re("$dotted @ # ($aux | '@<@' $crossproducts '@>@')* #", defs)
         if len(contexts) > 0:
-            center = FST.regex("'@<@' (.-'@>@')* '@>@'")
+            center = FST.re("'@<@' (.-'@>@')* '@>@'")
             lrpairs = ([l.ignore(defs['br']), r.ignore(defs['br'])] for l,r in contexts)
             defs['rule'] = center.context_restrict(*lrpairs, rewrite = True).compose(defs['base'])
         else:
             defs['rule'] = defs['base']
-        defs['remrewr'] = FST.regex("'@<@':'' (.-'@>@')* '@>@':''") # worsener
-        worseners = [FST.regex(".* $remrewr (.|$remrewr)*", defs)]
+        defs['remrewr'] = FST.re("'@<@':'' (.-'@>@')* '@>@':''") # worsener
+        worseners = [FST.re(".* $remrewr (.|$remrewr)*", defs)]
         if flags.get('longest', False) == 'True':
-            worseners.append(FST.regex(".* '@<@' $aux+ '':('@>@' '@<@'?) $aux ($br:''|'':$br|$aux)* .*", defs))
+            worseners.append(FST.re(".* '@<@' $aux+ '':('@>@' '@<@'?) $aux ($br:''|'':$br|$aux)* .*", defs))
         if flags.get('leftmost', False) == 'True':
-            worseners.append(FST.regex(\
+            worseners.append(FST.re(\
                  ".* '@<@':'' $aux+ ('':'@<@' $aux* '':'@>@' $aux+ '@>@':'' .* | '':'@<@' $aux* '@>@':'' $aux* '':'@>@' .*)", defs))
         if flags.get('shortest', False) == 'True':
-            worseners.append(FST.regex(".* '@<@' $aux* '@>@':'' $aux+ '':'@>@' .*", defs))
+            worseners.append(FST.re(".* '@<@' $aux* '@>@':'' $aux+ '':'@>@' .*", defs))
         defs['worsen'] = functools.reduce(lambda x, y: x.union(y), worseners).determinize_unweighted().minimize()
-        defs['rewr'] = FST.regex("$^output($^input($rule) @ $worsen)", defs)
-        final = FST.regex("(.* - $rewr) @ $rule", defs)
+        defs['rewr'] = FST.re("$^output($^input($rule) @ $worsen)", defs)
+        final = FST.re("(.* - $rewr) @ $rule", defs)
         return final.map_labels({s:'' for s in ['@<@','@>@','#']}).epsilon_remove().determinize_as_dfa().minimize()
 
     def context_restrict(self, *contexts, rewrite = False):
@@ -1145,18 +1212,18 @@ class FST:
             fsm.alphabet.add('@=@') # Add aux sym to contexts so they don't match .
         self.alphabet.add('@=@')    # Same for self
         if not rewrite:
-            cs = (FST.regex("$lc '@=@' (.-'@=@')* '@=@' $rc", \
+            cs = (FST.re("$lc '@=@' (.-'@=@')* '@=@' $rc", \
                  {'lc':lc.copy_mod().map_labels({'#': '@#@'}),\
                  'rc':rc.copy_mod().map_labels({'#': '@#@'})}) for lc, rc in contexts)
         else:
-            cs = (FST.regex("$lc '@=@' (.-'@=@')* '@=@' $rc", {'lc':lc, 'rc':rc}) for lc, rc in contexts)
+            cs = (FST.re("$lc '@=@' (.-'@=@')* '@=@' $rc", {'lc':lc, 'rc':rc}) for lc, rc in contexts)
         cunion = functools.reduce(lambda x, y: x.union(y), cs).determinize().minimize()
-        r = FST.regex("(.-'@=@')* '@=@' $c '@=@' (.-'@=@')* - ((.-'@=@')* $cunion (.-'@=@')*)",\
+        r = FST.re("(.-'@=@')* '@=@' $c '@=@' (.-'@=@')* - ((.-'@=@')* $cunion (.-'@=@')*)",\
                        {'c':self, 'cunion':cunion})
         r = r.map_labels({'@=@':''}).epsilon_remove().determinize_as_dfa().minimize()
         for fsm in itertools.chain.from_iterable(contexts):
             fsm.alphabet -= {'@=@'} # Remove aux syms from contexts
-        r = FST.regex(".? (.-'@#@')* .? - $r", {'r': r})
+        r = FST.re(".? (.-'@#@')* .? - $r", {'r': r})
         return r.map_labels({'@#@':''}).epsilon_remove().determinize_as_dfa().minimize()
 
     def project(self, dim = 0):
