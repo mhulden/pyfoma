@@ -10,7 +10,7 @@ __PyFoma__ supports:
 - Weights in the _tropical semiring_ for automata and transducer construction both for low-level construction methods and regular expressions.
 - Integration with Jupyter-style notebooks for automata visualization and debugging.
 - Custom extensions to the regular expression parser and compiler using Python.
-- Compilation of morphological lexicons as weighted or unweighted right-linear grammars, similarly to the [lexc](https://fomafst.github.io/morphtut.html#The_lexc-script)-formalism.
+- [Compilation of morphological lexicons](./docs/MorphologicalAnalyzerTutorial.ipynb) as weighted or unweighted right-linear grammars, similarly to the [lexc](https://fomafst.github.io/morphtut.html#The_lexc-script)-formalism.
 - A comprehensive replacement-rule formalism to construct string-rewriting transducers.
 
 The PyFoma implementation aims at a level of abstraction where most major finite-state algorithms are implemented clearly and asymptotically optimally in what resembles canonical pseudocode, so the code itself could be used for instructional purposes. Additionally, many algorithms can illustrate how they work. The regular expression and right-linear grammar formalisms are intended to be accessible to linguists and computer scientists alike.
