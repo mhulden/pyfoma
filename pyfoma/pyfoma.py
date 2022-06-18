@@ -83,7 +83,7 @@ class regexparse:
             raise SyntaxError("End must be larger than start in character class range.")
         return ranges, negated
 
-    def compile(self):
+    def compile(self) -> 'FST':
         """Put it all together!
         'If you lie to the compiler, it will have its revenge.' — Henry Spencer."""
 
@@ -190,7 +190,7 @@ class regexparse:
               "Something's happening here, and what it is ain't exactly clear...", 1, 0)
         return _pop(stack).trim().epsilon_remove().push_weights().determinize_as_dfa().minimize_as_dfa().label_states_topology().cleanup_sigma()
 
-    def tokenize(self):
+    def tokenize(self) -> list:
         """Token, token, token, though the stream is broken... ride 'em in, tokenize!"""
         # prematch (skip this), groupname, core regex (capture this), postmatch (skip)
         token_regexes = [
@@ -217,6 +217,7 @@ class regexparse:
                 continue
             elif op == 'ESCAPED' or op == 'QUOTED':
                 op = 'SYMBOL'
+                value = value.replace("\\","")
             elif op == 'NEWLINE':
                 line_start = mo.end()
                 line_num += 1
@@ -228,7 +229,7 @@ class regexparse:
             res.append((op, value, line_num, column))
         return res
 
-    def _insert_invisibles(self, tokens):
+    def _insert_invisibles(self, tokens: list) -> list:
         """Idiot hack or genius? We insert explicit CONCAT tokens before parsing.
 
            'I now avoid invisible infix operators almost entirely. I do remember a few
@@ -260,7 +261,7 @@ class regexparse:
     def _error_report(self, errortype, errorstring, line_num, column):
         raise errortype(errorstring, ("", line_num, column, self.expression))
 
-    def parse(self):
+    def parse(self) -> list:
         """Attention! Those who don't speak reverse Polish will be shunted!
         'Simplicity is a great virtue but it requires hard work to achieve it and
         education to appreciate it. And to make matters worse: complexity sells better.'
@@ -297,7 +298,12 @@ class regexparse:
 class Paradigm:
 
     def __init__(self, grammar, regexfilter, tagfilter = lambda x: x.startswith('[') and x.endswith(']')):
-        """Extract a 'paradigm' from a grammar FST. Available as a list in attr para."""
+        """Extract a 'paradigm' from a grammar FST. Available as a list in attr para.
+           regexfilter -- a regex which is composed on the input side to filter out
+                          a specific lexeme or set of lexemes, e.g. 'run.*'
+           Keyword arguments:
+           tagfilter -- a function to identify tags, by default bracketed symbols [ ... ]
+           """
         self.FSM = grammar
         self.regexfilter = regexfilter # a regex used for filtering input side
         self.tagfilter = tagfilter # func to identify tags vs. other symbols
@@ -371,8 +377,13 @@ class PartitionRefinement:
 class FST:
 
     @classmethod
-    def character_ranges(cls, ranges, complement = False):
-        """Returns a two-state FSM from a list of unicode code point range pairs."""
+    def character_ranges(cls, ranges, complement = False) -> 'FST':
+        """Returns a two-state FSM from a list of unicode code point range pairs.
+           Keyword arguments:
+           complement -- if True, the character class is negated, i.e. [^ ... ], and
+           a two-state FST is returned with the single label . and all the symbols in
+           the character class in the alphabet.
+           """
         newfst = cls()
         secondstate = State()
         newfst.states.add(secondstate)
@@ -393,7 +404,13 @@ class FST:
 
     @classmethod
     def regex(cls, regularexpression, defined = {}, functions = set()):
-        """Compile a regular expression and return the resulting FST."""
+        """Compile a regular expression and return the resulting FST.
+           Keyword arguments:
+           defined -- a dictionary of defined FSTs that the compiler can access whenever
+                      a defined network is referenced in the regex, e.g. '$Vowel'
+           functions -- a set of Python functions that the compiler can access when a function
+                       is referenced in the regex, e.g. $^myfunc(...)
+        """
         myregex = regexparse(regularexpression, defined, functions)
         return myregex.compiled
 
@@ -401,6 +418,7 @@ class FST:
 
     @classmethod
     def from_strings(cls, strings):
+        """Create an automaton that accepts words in the iterable 'strings'."""
         Grammar = {"Start":((w, "#") for w in strings)}
         return FST.rlg(Grammar, "Start").determinize_as_dfa().minimize().label_states_topology()
 
@@ -449,6 +467,18 @@ class FST:
         return newfst
 
     def __init__(self, label = None, weight = 0.0, alphabet = set()):
+        """Calling FST() creates an FST-structure with a single state.
+           Keyword arguments:
+           label -- create a two-state FST that accepts label
+           weight -- add a weight to the final state
+           alphabet -- declare an alphabet explicitly
+           If 'label' is given, a two-state automaton is created with label as the
+           only transition from the initial state to the final state.
+           If 'weight' is also given, the final state will have that weight.
+           Labels are always tuples internally, so a two-state automaton
+           that only accepts 'a' should have label = ('a',).
+           If label is the empty string, i.e. ('',), the second state will not be
+           created, but the initial state will be made final with weight 'weight'."""
 
         self.alphabet = alphabet
         self.initialstate = State()
@@ -466,9 +496,11 @@ class FST:
             self.initialstate.add_transition(targetstate, label, 0.0)
 
     def __copy__(self):
+        """Copy an FST. Actually calls copy_filtered()."""
         return self.copy_filtered()[0]
 
     def __len__(self):
+        """Return the number of states."""
         return len(self.states)
 
     def __str__(self):
@@ -491,29 +523,41 @@ class FST:
         return st
 
     def __and__(self, other):
+        """Intersection."""
         return self.intersection(other)
 
     def __or__(self, other):
+        """Union."""
         return self.union(other)
 
     def __sub__(self, other):
+        """Set subtraction."""
         return self.difference(other)
 
     def __pow__(self, other):
+        """Cross-product."""
         return self.cross_product(other)
 
     def __mul__(self, other):
+        """Concatenation."""
         return self.concatenate(other)
 
     def __matmul__(self, other):
+        """Composition."""
         return self.compose(other)
 
-    def number_unnamed_states(self, force = False):
+    def number_unnamed_states(self, force = False) -> dict:
+        """Sequentially number those states that don't have the 'name' attribute.
+           If 'force == True', number all states."""
         cntr = itertools.count()
         ordered = [self.initialstate] + list(self.states - {self.initialstate})
         return {id(s):(next(cntr) if s.name == None or force == True else s.name) for s in ordered}
 
     def harmonize_alphabet(func):
+        """A wrapper for expanding .-symbols when operations of arity 2 are performed.
+           For example, if calculating the union of FSM1 and FSM2, and both contain
+           .-symbols, the transitions with . are expanded to include the symbols that
+           are present in the other FST."""
         @functools.wraps(func)
         def wrapper_decorator(self, other, **kwargs):
             for A, B in [(self, other), (other, self)]:
@@ -592,7 +636,12 @@ class FST:
         return self
 
     def view(self, raw = False, show_weights = False, show_alphabet = True):
-
+        """Graphviz viewing and display in Jupyter.
+           Keyword arguments:
+           raw -- if True, show label tuples and weights unformatted
+           show_weights -- force display of weights even if 0.0
+           show_alphabet -- displays the alphabet below the FST
+        """
         import graphviz
         from IPython.display import display
         def _float_format(num):
@@ -657,6 +706,8 @@ class FST:
                     yield state, label, t
 
     def all_transitions_by_label(self, states):
+        """Enumerate all transitions by label. Each yield produces a label, and those
+           the target states. 'states' is an iterable of source states."""
         all_labels = {l for s in states for l in s.transitions.keys()}
         for l in all_labels:
             targets = set()
@@ -667,7 +718,7 @@ class FST:
             yield l, targets
 
 
-    def scc(self):
+    def scc(self) -> set:
         """Calculate the strongly connected components of an FST.
 
            This is a basic implementation of Tarjan's (1972) algorithm.
@@ -712,7 +763,7 @@ class FST:
 
     def push_weights(self):
         """Pushes weights toward the initial state. Calls dijkstra and maybe scc."""
-        potentials = self.dijkstra_all()
+        potentials = {s:self.dijkstra(s) for s in self.states}
         for s, _, t in self.all_transitions(self.states):
             t.weight += potentials[t.targetstate] - potentials[s]
         for s in self.finalstates:
@@ -743,6 +794,11 @@ class FST:
         return self
 
     def copy_mod(self, modlabel = lambda l, w: l, modweight = lambda l, w: w):
+        """Copies an FSM and possibly modifies labels and weights through functions.
+           Keyword arguments:
+           modlabel -- a function that modifies the label, takes label, weight as args.
+           modweights -- a function that modifies the weight, takes label, weight as args.
+        """
         newfst = FST(alphabet = self.alphabet.copy())
         q1q2 = {k:State(name = k.name) for k in self.states}
         newfst.states = set(q1q2.values())
@@ -757,7 +813,9 @@ class FST:
 
         return newfst
 
-    def copy_filtered(self, statefilter = lambda x: True, labelfilter = lambda x: True):
+    def copy_filtered(self, labelfilter = lambda x: True):
+        """Create a copy of self, possibly filtering out labels where them
+           optional function 'labelfilter' returns False."""
         newfst = FST(alphabet = self.alphabet.copy())
         q1q2 = {k:State() for k in self.states}
         for s in self.states:
@@ -785,7 +843,7 @@ class FST:
         eclosures = {s:self.epsilon_closure(s) for s in self.states}
         if all(len(ec) == 0 for ec in eclosures.values()): # bail, no epsilon transitions
             return self
-        newfst, mapping = self.copy_filtered(labelfilter = lambda lbl: not all(len(sublabel) == 0 for sublabel in lbl))
+        newfst, mapping = self.copy_filtered(labelfilter = lambda lbl: any(len(sublabel) != 0 for sublabel in lbl))
         for state, ec in eclosures.items():
             for target, cost in ec.items():
                 # copy target's transitions to source
@@ -800,7 +858,7 @@ class FST:
                     mapping[state].finalweight += cost + target.finalweight
         return newfst
 
-    def epsilon_closure(self, state):
+    def epsilon_closure(self, state) -> dict:
         """Find, for a state the set of states reachable by epsilon-hopping."""
         explored, cntr = {}, itertools.count()
         q = [(0.0, next(cntr), state)]
@@ -813,10 +871,7 @@ class FST:
         explored.pop(state) # Remove the state where we started from
         return explored
 
-    def dijkstra_all(self):
-        return {s:self.dijkstra(s) for s in self.states}
-
-    def dijkstra(self, state):
+    def dijkstra(self, state) -> float:
         """The cost of the cheapest path from state to a final state. Go Edsger!"""
         explored, cntr = {state}, itertools.count()  # decrease-key is for wusses
         Q = [(0.0, next(cntr), state)] # Middle is dummy cntr to avoid key ties
@@ -844,7 +899,10 @@ class FST:
                 Q.append((t.targetstate, cost + t.weight, seq + [label]))
 
     def label_states_topology(self, mode = 'BFS'):
-        """Topologically sort and label states with numbers."""
+        """Topologically sort and label states with numbers.
+        Keyword arguments:
+        mode -- 'BFS', i.e. breadth-first search by default. 'DFS' is depth-first.
+        """
         cntr = itertools.count()
         Q = deque([self.initialstate])
         inqueue = {self.initialstate}
@@ -857,11 +915,12 @@ class FST:
                     inqueue.add(t.targetstate)
         return self
 
-    def words_nbest(self, n):
+    def words_nbest(self, n) -> list:
+        """Finds the n cheapest word in an FST, returning a list."""
         return list(itertools.islice(self.words_cheapest(), n))
 
     def words_cheapest(self):
-        """A generator to yield all words in order of cost."""
+        """A generator to yield all words in order of cost, cheapest first."""
         cntr = itertools.count()
         Q = [(0.0, next(cntr), self.initialstate, [])]
         while Q:
@@ -874,12 +933,13 @@ class FST:
                 for label, t in s.all_transitions():
                     heapq.heappush(Q, (cost + t.weight, next(cntr), t.targetstate, seq + [label]))
 
-    def tokenize_against_alphabet(self, word):
+    def tokenize_against_alphabet(self, word) -> list:
+        """Tokenize a string using the alphabet of the automaton."""
         tokens = []
         start = 0
         while start < len(word):
             t = word[start] # Default is length 1 token unless we find a longer one
-            for length in range(1, len(word) - start + 1): # TODO: limit to max length
+            for length in range(1, len(word) - start + 1):    # TODO: limit to max length
                 if word[start:start+length] in self.alphabet: # of syms in alphabet
                     t = word[start:start+length]
             tokens.append(t)
@@ -887,12 +947,17 @@ class FST:
         return tokens
 
     def generate(self, word, weights = False):
+        """Pass word through FST and return generator that yields all outputs."""
         yield from self.apply(word, inverse = False, weights = weights)
 
     def analyze(self, word, weights = False):
+        """Pass word through FST and return generator that yields all inputs."""
         yield from self.apply(word, inverse = True, weights = weights)
 
     def apply(self, word, inverse = False, weights = False):
+        """Pass word through FST and return generator that yields outputs.
+           if inverse == True, map from range to domain.
+           weights is by default False. To see the cost, set weights to True."""
         IN, OUT = [-1, 0] if inverse else [0, -1] # Tuple positions for input, output
         cntr = itertools.count()
         w = self.tokenize_against_alphabet(word)
@@ -992,7 +1057,7 @@ class FST:
             return self # we were already minimal, no need to reconstruct
         return self.mergestatesets(equivalenceclasses)
 
-    def mergestatesets(self, equivalenceclasses):
+    def mergestatesets(self, equivalenceclasses: set) -> 'FST':
         """Merge equivalent states given as a set of sets."""
         eqmap = {s[i]:s[0] for s in equivalenceclasses for i in range(len(s))}
         representerstates = set(eqmap.values())
@@ -1010,6 +1075,8 @@ class FST:
         return newfst
 
     def find_sourcestates(self, index, stateset):
+        """Create generator that yields sourcestates for a set of target states.
+           Yields the label, and the set of sourcestates."""
         all_labels = {l for s in stateset for l in index[s].keys()}
         for l in all_labels:
             sources = set()
@@ -1018,7 +1085,8 @@ class FST:
                     sources |= index[state][l]
             yield l, sources
 
-    def reverse_index(self):
+    def reverse_index(self) -> dict:
+        """Returns dictionary of transitions in reverse (indexed by state)."""
         idx = {s:{} for s in self.states}
         for s, lbl, t in self.all_transitions(self.states):
             idx[t.targetstate][lbl] = idx[t.targetstate].get(lbl, set()) | {s}
@@ -1029,7 +1097,7 @@ class FST:
         return self.epsilon_remove().reverse().determinize().reverse().determinize()
 
     def kleene_closure(self, mode = 'star'):
-        """self*. No epsilons here."""
+        """self*. No epsilons here. If mode == 'plus', calculate self+."""
         q1 = {k:State() for k in self.states}
         newfst = FST(alphabet = self.alphabet.copy())
 
@@ -1052,12 +1120,13 @@ class FST:
         return newfst
 
     def add_weight(self, weight):
+        """Adds weight to the set of final states in the FST."""
         for s in self.finalstates:
             s.finalweight += weight
         return self
 
     def optional(self):
-        """Same as T|0."""
+        """Same as T|'' ."""
         if self.initialstate in self.finalstates:
             return self
         newinitial = State()
@@ -1097,7 +1166,9 @@ class FST:
 
     @harmonize_alphabet
     def cross_product(self, other, optional = False):
-        """Perform the cross-product of T1, T2 through composition."""
+        """Perform the cross-product of T1, T2 through composition.
+           Keyword arguments:
+           optional -- if True, calculates T1:T2 | T1."""
         newfst_a =  self.copy_mod(modlabel = lambda l, _: l + ('',))
         newfst_b = other.copy_mod(modlabel = lambda l, _: ('',) + l)
         if optional == True:
@@ -1108,7 +1179,7 @@ class FST:
     def compose(self, other):
         """Composition of A,B; will expand an acceptor into 2-tape FST on-the-fly."""
 
-        def _mergetuples(x, y):
+        def _mergetuples(x: tuple, y: tuple) -> tuple:
             if len(x) == 1:
                 t = x + y[1:]
             elif len(y) == 1:
@@ -1301,14 +1372,18 @@ class FST:
         return newfst
 
     def intersection(self, other):
+        """Intersection of self and other. Uses the product algorithm."""
         return self.product(other, finalf = all, oplus = operator.add, pathfollow = lambda x,y: x & y)
 
     def difference(self, other):
+        """Returns self-other. Uses the product algorithm."""
         return self.product(other, finalf = lambda x: x[0] and not x[1],\
                            oplus = lambda x,y: x, pathfollow = lambda x,y: x)
 
     @harmonize_alphabet
     def product(self, other, finalf = any, oplus = min, pathfollow = lambda x,y: x|y):
+        """Generates the product FST from self, other. The helper functions by default
+           produce self|other."""
         newfst = FST()
         Q = deque([(self.initialstate, other.initialstate)])
         S = {(self.initialstate, other.initialstate): newfst.initialstate}
@@ -1353,7 +1428,9 @@ class State:
         self.name = name
 
     @property
-    def transitionsin(self):
+    def transitionsin(self) -> dict:
+        """Returns a dictionary of the transitions from a state, indexed by the input
+           label, i.e. the first member of the label tuple."""
         if self._transitionsin is None:
             self._transitionsin = defaultdict(set)
             for label, newtrans in self.transitions.items():
@@ -1363,6 +1440,8 @@ class State:
 
     @property
     def transitionsout(self):
+        """Returns a dictionary of the transitions from a state, indexed by the output
+           label, i.e. the last member of the label tuple."""
         if self._transitionsout is None:
             self._transitionsout = defaultdict(set)
             for label, newtrans in self.transitions.items():
@@ -1371,6 +1450,7 @@ class State:
         return self._transitionsout
 
     def rename_label(self, original, new):
+        """Changes labels in a state's transitions from original to new."""
         for t in self.transitions[original]:
             t.label = new
         self.transitions[new] = self.transitions.get(new, set()) | self.transitions[original]
@@ -1396,11 +1476,11 @@ class State:
             for t in transitions:
                 yield label, t
 
-    def all_targets(self):
+    def all_targets(self) -> set:
         """Returns the set of states a state has transitions to."""
         return {t.targetstate for tr in self.transitions.values() for t in tr}
 
-    def all_epsilon_targets_cheapest(self):
+    def all_epsilon_targets_cheapest(self) -> dict:
         """Returns a dict of states a state transitions to (cheapest) with epsilon."""
         targets = defaultdict(lambda: float("inf"))
         for lbl, tr in self.transitions.items():
@@ -1409,7 +1489,7 @@ class State:
                     targets[s.targetstate] = min(targets[s.targetstate], s.weight)
         return targets
 
-    def all_targets_cheapest(self):
+    def all_targets_cheapest(self) -> dict:
         """Returns a dict of states a state transitions to (cheapest)."""
         targets = defaultdict(lambda: float("inf"))
         for tr in self.transitions.values():
