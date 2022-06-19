@@ -2,7 +2,7 @@
 
 """PyFoma Finite-State Tool."""
 
-import heapq, operator, itertools, re, functools
+import heapq, operator, itertools, re as pyre, functools
 from collections import deque, defaultdict
 
 __author__     = "Mans Hulden"
@@ -13,6 +13,67 @@ __version__    = "2.0"
 __maintainer__ = "Mans Hulden"
 __email__      = "mans.hulden@gmail.com"
 __status__     = "Prototype"
+
+# Module-level functions
+def concatenate(x, y):
+    return x.copy_mod().concatenate(y)
+
+def union(x, y):
+    return x.copy_mod().union(y)
+
+def intersection(x, y):
+    return x.copy_mod().intersection(y)
+
+def kleene_star(x):
+    return x.copy_mod().kleene_closure()
+
+def kleene_plus(x):
+    return x.copy_mod().kleene_closure(mode = 'plus')
+
+def difference(x, y):
+    return x.copy_mod().difference(y)
+
+def cross_product(x, y):
+    return x.copy_mod().cross_product(y)
+
+def compose(x, y):
+    return x.copy_mod().compose(y)
+
+def optional(x):
+    return x.copy_mod().optional()
+
+def ignore(x, y):
+    return x.copy_mod().ignore(y)
+
+def project(x, dim = 0):
+    return x.copy_mod().project(dim = dim)
+
+def invert(x):
+    return x.copy_mod().invert()
+
+def reverse(x):
+    return x.copy_mod().reverse()
+
+def reverse_e(x):
+    return x.copy_mod().reverse_e()
+
+def minimize(x):
+    return x.copy_mod().minimize()
+
+def minimize_as_dfa(x):
+    return x.copy_mod().minimize_as_dfa()
+
+def determinize_as_dfa(x):
+    return x.copy_mod().determinize_as_dfa()
+
+def minimize_unweighted(x):
+    return x.copy_mod().determinize_unweighted()
+
+def re(*args, **kwargs):
+    return FST.re(*args, **kwargs)
+
+regex = re
+
 
 class regexparse:
 
@@ -153,17 +214,17 @@ class regexparse:
                 rng = value.split(',')
                 lang = _pop(stack)
                 if len(rng) == 1:  # e.g. {3}
-                    _append(stack, functools.reduce(lambda x, y: x.concatenate(y), [lang]*int(value)))
+                    _append(stack, functools.reduce(lambda x, y: concatenate(x, y), [lang]*int(value)))
                 elif rng[0] == '': # e.g. {,3}
                     lang = lang.optional()
-                    _append(stack, functools.reduce(lambda x, y: x.concatenate(y), [lang]*int(rng[1])))
+                    _append(stack, functools.reduce(lambda x, y: concatenate(x, y), [lang]*int(rng[1])))
                 elif rng[1] == '': # e.g. {3,}
-                    _append(stack, functools.reduce(lambda x, y: x.concatenate(y), [lang]*int(rng[0])).concatenate(lang.kleene_closure()))
+                    _append(stack, functools.reduce(lambda x, y: concatenate(x, y), [lang]*int(rng[0])).concatenate(lang.kleene_closure()))
                 else:              # e.g. {1,4}
                     if int(rng[0] > rng[1]):
                         self._error_report(SyntaxError, "n must be greater than m in {m,n}", line_num, column)
-                    lang1 = functools.reduce(lambda x, y: x.concatenate(y), [lang]*int(rng[0]))
-                    lang2 = functools.reduce(lambda x, y: x.concatenate(y), [lang.optional()]*(int(rng[1])-int(rng[0])))
+                    lang1 = functools.reduce(lambda x, y: concatenate(x, y), [lang]*int(rng[0]))
+                    lang2 = functools.reduce(lambda x, y: concatenate(x, y), [lang.optional()]*(int(rng[1])-int(rng[0])))
                     _append(stack, lang1.concatenate(lang2))
             elif op == 'CP':
                 arg2, arg1 = _pop(stack), _pop(stack)
@@ -209,7 +270,7 @@ class regexparse:
     ]
         tok_regex = '|'.join('%s(?P<%s>%s)%s' % mtch for mtch in token_regexes)
         line_num, line_start, res = 1, 0, []
-        for mo in re.finditer(tok_regex, self.expression):
+        for mo in pyre.finditer(tok_regex, self.expression):
             op = mo.lastgroup
             value = mo.group(op)
             column = mo.start() - line_start
@@ -382,7 +443,7 @@ class FST:
            Keyword arguments:
            complement -- if True, the character class is negated, i.e. [^ ... ], and
            a two-state FST is returned with the single label . and all the symbols in
-           the character class in the alphabet.
+           the character class are put in the alphabet.
            """
         newfst = cls()
         secondstate = State()
@@ -407,7 +468,7 @@ class FST:
         """Compile a regular expression and return the resulting FST.
            Keyword arguments:
            defined -- a dictionary of defined FSTs that the compiler can access whenever
-                      a defined network is referenced in the regex, e.g. '$Vowel'
+                      a defined network is referenced in the regex, e.g. $vowel
            functions -- a set of Python functions that the compiler can access when a function
                        is referenced in the regex, e.g. $^myfunc(...)
         """
@@ -430,7 +491,7 @@ class FST:
                 return ['']
             tokens = []
             tok_re = r"'(?P<multi>([']|[^']*))'|\\(?P<esc>(.))|(?P<single>(.))"
-            for mo in re.finditer(tok_re, w):
+            for mo in pyre.finditer(tok_re, w):
                 token = mo.group(mo.lastgroup)
                 if token == " " and mo.lastgroup == 'single':
                     token = ""  # normal spaces for alignment, escaped for actual
@@ -545,6 +606,12 @@ class FST:
     def __matmul__(self, other):
         """Composition."""
         return self.compose(other)
+
+    def become(self, other):
+        """Hacky or what? We use this to mutate self for those algorithms that don't directly do it."""
+        self.alphabet, self.initialstate, self.states, self.finalstates = \
+        other.alphabet, other.initialstate, other.states, other.finalstates
+        return self
 
     def number_unnamed_states(self, force = False) -> dict:
         """Sequentially number those states that don't have the 'name' attribute.
@@ -856,7 +923,7 @@ class FST:
                         newfst.finalstates.add(mapping[state])
                         mapping[state].finalweight = 0.0
                     mapping[state].finalweight += cost + target.finalweight
-        return newfst
+        return self.become(newfst)
 
     def epsilon_closure(self, state) -> dict:
         """Find, for a state the set of states reachable by epsilon-hopping."""
@@ -984,13 +1051,15 @@ class FST:
 
     def determinize_unweighted(self):
         """Determinize with all zero weights."""
-        return self.determinize(staterep = lambda s, w: (s, 0.0), oplus = lambda *x: 0.0)
+        self = self.determinize(staterep = lambda s, w: (s, 0.0), oplus = lambda *x: 0.0)
+        return self
 
     def determinize_as_dfa(self):
         """Determinize as a DFA with weight as part of label, then apply unweighted det."""
         newfst = self.copy_mod(modlabel = lambda l, w: l + (w,), modweight = lambda l, w: 0.0)
         determinized = newfst.determinize_unweighted() # run det, then move weights back
-        return determinized.copy_mod(modlabel = lambda l, _: l[:-1], modweight = lambda l, _: l[-1])
+        self = determinized.copy_mod(modlabel = lambda l, _: l[:-1], modweight = lambda l, _: l[-1])
+        return self
 
     def determinize(self, staterep = lambda s, w: (s, w), oplus = min):
         """Weighted determinization of FST."""
@@ -1032,13 +1101,14 @@ class FST:
                     # State was final, so we discharge the maximum debt we can
                     newstate.finalweight = oplus(t.targetstate.finalweight + t.weight + \
                         residuals[s] - wprime for s, t in tset if t.targetstate in self.finalstates)
-        return newfst
+        return self.become(newfst)
 
     def minimize_as_dfa(self):
         """Minimize as a DFA with weight as part of label, then apply unweighted min."""
         newfst = self.copy_mod(modlabel = lambda l, w: l + (w,), modweight = lambda l, w: 0.0)
         minimized = newfst.minimize() # minimize, and shift weights back
-        return minimized.copy_mod(modlabel = lambda l, _: l[:-1], modweight = lambda l, _: l[-1])
+        self = minimized.copy_mod(modlabel = lambda l, _: l[:-1], modweight = lambda l, _: l[-1])
+        return self
 
     def minimize(self):
         """Minimize FSM by constrained reverse subset construction, Hopcroft-ish."""
@@ -1055,9 +1125,10 @@ class FST:
         equivalenceclasses = P.astuples()
         if len(equivalenceclasses) == len(self.states):
             return self # we were already minimal, no need to reconstruct
-        return self.mergestatesets(equivalenceclasses)
+        minimized = self._mergestatesets(equivalenceclasses)
+        return self.become(minimized)
 
-    def mergestatesets(self, equivalenceclasses: set) -> 'FST':
+    def _mergestatesets(self, equivalenceclasses: set) -> 'FST':
         """Merge equivalent states given as a set of sets."""
         eqmap = {s[i]:s[0] for s in equivalenceclasses for i in range(len(s))}
         representerstates = set(eqmap.values())
@@ -1094,7 +1165,7 @@ class FST:
 
     def minimize_brz(self):
         """Minimize through Brzozowski's trick."""
-        return self.epsilon_remove().reverse().determinize().reverse().determinize()
+        return self.epsilon_remove().reverse_e().determinize().reverse_e().determinize()
 
     def kleene_closure(self, mode = 'star'):
         """self*. No epsilons here. If mode == 'plus', calculate self+."""
@@ -1117,7 +1188,7 @@ class FST:
             newfst.finalstates |= {newfst.initialstate}
             newfst.initialstate.finalweight = 0.0
         newfst.states = set(q1.values()) | {newfst.initialstate}
-        return newfst
+        return self.become(newfst)
 
     def add_weight(self, weight):
         """Adds weight to the set of final states in the FST."""
@@ -1162,7 +1233,7 @@ class FST:
             for f in self.finalstates:
                 q1q2[f].finalweight = f.finalweight + ocopy.initialstate.finalweight
         newfst.states = set(q1q2.values())
-        return newfst
+        return self.become(newfst)
 
     @harmonize_alphabet
     def cross_product(self, other, optional = False):
@@ -1172,8 +1243,10 @@ class FST:
         newfst_a =  self.copy_mod(modlabel = lambda l, _: l + ('',))
         newfst_b = other.copy_mod(modlabel = lambda l, _: ('',) + l)
         if optional == True:
-            return newfst_a.compose(newfst_b).union(self)
-        return newfst_a.compose(newfst_b)
+            self = newfst_a.compose(newfst_b).union(self)
+        else:
+            self = newfst_a.compose(newfst_b)
+        return self
 
     @harmonize_alphabet
     def compose(self, other):
@@ -1238,7 +1311,7 @@ class FST:
                     newfst.states.add(S[(target1, target2, 2)])
                 newlabel = intrans[1].label
                 currentstate.add_transition(S[(target1, target2, 2)], newlabel, intrans[1].weight)
-        return newfst
+        return self.become(newfst)
 
     def invert(self):
         """Calculates the inverse of a transducer, i.e. flips label tuples around."""
@@ -1248,7 +1321,8 @@ class FST:
 
     def ignore(self, other):
         """A, ignoring intervening instances of B."""
-        return FST.re("$^output($A @ ('.'|'':$B)*)", {'A': self, 'B': other})
+        newfst = FST.re("$^output($A @ ('.'|'':$B)*)", {'A': self, 'B': other})
+        return self.become(newfst)
 
     def rewrite(self, *contexts, **flags):
         """Rewrite self in contexts in parallel, controlled by flags."""
@@ -1275,7 +1349,8 @@ class FST:
         defs['worsen'] = functools.reduce(lambda x, y: x.union(y), worseners).determinize_unweighted().minimize()
         defs['rewr'] = FST.re("$^output($^input($rule) @ $worsen)", defs)
         final = FST.re("(.* - $rewr) @ $rule", defs)
-        return final.map_labels({s:'' for s in ['@<@','@>@','#']}).epsilon_remove().determinize_as_dfa().minimize()
+        newfst = final.map_labels({s:'' for s in ['@<@','@>@','#']}).epsilon_remove().determinize_as_dfa().minimize()
+        return self.become(newfst)
 
     def context_restrict(self, *contexts, rewrite = False):
         """self only allowed in the context L1 _ R1, or ... , or  L_n _ R_n."""
@@ -1295,7 +1370,8 @@ class FST:
         for fsm in itertools.chain.from_iterable(contexts):
             fsm.alphabet -= {'@=@'} # Remove aux syms from contexts
         r = FST.re(".? (.-'@#@')* .? - $r", {'r': r})
-        return r.map_labels({'@#@':''}).epsilon_remove().determinize_as_dfa().minimize()
+        newfst = r.map_labels({'@#@':''}).epsilon_remove().determinize_as_dfa().minimize()
+        return self.become(newfst)
 
     def project(self, dim = 0):
         """Let's project! dim = -1 will get output proj regardless of # of tapes."""
@@ -1329,7 +1405,7 @@ class FST:
             if t.targetstate in self.finalstates:
                 newfst.initialstate.add_transition(mapping[s], lbl, t.weight + \
                                                    t.targetstate.finalweight)
-        return newfst
+        return self.become(newfst)
 
     def reverse_e(self):
         """Reversal of FST, using epsilons."""
@@ -1345,7 +1421,7 @@ class FST:
         newfst.states = set(mapping.values()) | {newfst.initialstate}
         newfst.finalstates = {mapping[self.initialstate]}
         mapping[self.initialstate].finalweight = 0.0
-        return newfst
+        return self.become(newfst)
 
     @harmonize_alphabet
     def union(self, other):
@@ -1369,16 +1445,18 @@ class FST:
             newfst.finalstates.add(newfst.initialstate)
             newfst.initialstate.finalweight = min(self.initialstate.finalweight, other.initialstate.finalweight)
 
-        return newfst
+        return self.become(newfst)
 
     def intersection(self, other):
         """Intersection of self and other. Uses the product algorithm."""
-        return self.product(other, finalf = all, oplus = operator.add, pathfollow = lambda x,y: x & y)
+        self = self.product(other, finalf = all, oplus = operator.add, pathfollow = lambda x,y: x & y)
+        return self
 
     def difference(self, other):
         """Returns self-other. Uses the product algorithm."""
-        return self.product(other, finalf = lambda x: x[0] and not x[1],\
+        self = self.product(other, finalf = lambda x: x[0] and not x[1],\
                            oplus = lambda x,y: x, pathfollow = lambda x,y: x)
+        return self
 
     @harmonize_alphabet
     def product(self, other, finalf = any, oplus = min, pathfollow = lambda x,y: x|y):
@@ -1404,7 +1482,7 @@ class FST:
                             S[(outtr.targetstate, intr.targetstate)] = State()
                             newfst.states.add(S[(outtr.targetstate, intr.targetstate)])
                         currentstate.add_transition(S[(outtr.targetstate, intr.targetstate)], lbl, oplus(outtr.weight, intr.weight))
-        return newfst
+        return self.become(newfst)
 
 
 class Transition:
