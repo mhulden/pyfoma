@@ -3,13 +3,16 @@ import setuptools
 with open("README.md", "r", encoding = "utf-8") as fh:
 	long_description = fh.read()
 
+github_permalink = "https://raw.githubusercontent.com/mhulden/pyfoma/main/docs/images/"
+fixed_readme = long_description.replace("./docs/images/", github_permalink)
+
 setuptools.setup(
     name = "pyfoma",
-    version = "0.0.10",
+    version = "0.0.12",
     author = "Mans Hulden",
     author_email = "mans.hulden@colorado.edu",
     description = "Python Finite-State Toolkit",
-    long_description = long_description,
+    long_description = fixed_readme,
     long_description_content_type = "text/markdown",
     url = "https://github.com/mhulden/pyfoma",
     project_urls = {
