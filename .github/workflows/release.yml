@@ -21,7 +21,7 @@ jobs:
         git add -A
         git commit -m "Bump version number" 
     - name: Build pip package
-      run: print("TODO: Build and deploy pip package")
+      run: echo "TODO: Build and deploy pip package"
     - name: Push changes
       run: |
         git branch tmp
