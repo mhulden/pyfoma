@@ -14,7 +14,7 @@ jobs:
       with:
         python-version: '3.10'
     - name: Update build version
-      run: python ./.github/workflows/update_pip_version.py ${{ github.event.release.tag_name }}
+      run: python ./.github/workflows/update_pip_version.py -v ${{ github.event.release.tag_name }}
     - name: Commit files
       run: |
         git config --local user.name ${{ github.actor }}
