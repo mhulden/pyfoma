@@ -19,6 +19,13 @@ jobs:
       run: |
         git config --local user.name ${{ github.actor }}
         git add -A
-        git commit -m "Bump version number"
+        git commit -m "Bump version number" 
+    - name: Build pip package
+      run: print("TODO: Build and deploy pip package")
     - name: Push changes
-      run: git push
+      run: |
+        git branch tmp
+        git checkout main
+        git merge tmp
+        git branch -d tmp
+        git push
