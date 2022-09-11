@@ -18,7 +18,7 @@ jobs:
     - name: Commit files
       run: |
         git config --local user.name ${{ github.actor }}
-        git add A
+        git add -A
         git commit -m "Bump version number"
     - name: Push changes
       run: git push
