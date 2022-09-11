@@ -23,7 +23,7 @@ def main(argv):
 	
 	print("NEW VERSION: " + new_version)
 	# Write the new version to the file
-	with fileinput.FileInput("../../setup.py", inplace=True, backup='.bak') as file:
+	with fileinput.FileInput("./setup.py", inplace=True, backup='.bak') as file:
 		for line in file:
 			if "version =" in line:
 				line = "\tversion = \"" + new_version + "\","
