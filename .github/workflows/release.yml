@@ -1,0 +1,24 @@
+name: Build and Upload Python Package
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  deploy:
+    runs-on: macos-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    - name: Update build version
+      run: python ./.github/workflows/update_pip_version.py ${{ github.event.release.tag_name }}
+    - name: Commit files
+      run: |
+        git config --local user.name ${{ github.actor }}
+        git add A
+        git commit -m "Bump version number"
+    - name: Push changes
+      run: git push
