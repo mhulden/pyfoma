@@ -29,10 +29,10 @@ jobs:
     - name: Build and upload
       env:
         TWINE_USERNAME: __token__
-        TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD_TEST }}
+        TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
       run: |
         python -m build
-        python -m twine upload --repository testpypi dist/*
+        python -m twine upload dist/*
     - name: Push changes
       run: |
         git branch tmp
