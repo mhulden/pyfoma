@@ -8,7 +8,7 @@ fixed_readme = long_description.replace("./docs/images/", github_permalink)
 
 setuptools.setup(
 	name = "pyfoma",
-	version = "v0.1.0-alpha.9",
+	version = "v0.1.1",
 	author = "Mans Hulden",
 	author_email = "mans.hulden@colorado.edu",
 	description = "Python Finite-State Toolkit",
