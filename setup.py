@@ -8,7 +8,7 @@ fixed_readme = long_description.replace("./docs/images/", github_permalink)
 
 setuptools.setup(
 	name = "pyfoma",
-	version = "v0.1.1",
+	version = "v0.1.3",
 	author = "Mans Hulden",
 	author_email = "mans.hulden@colorado.edu",
 	description = "Python Finite-State Toolkit",
@@ -23,7 +23,8 @@ setuptools.setup(
 		"License :: OSI Approved :: Apache Software License",
 		"Operating System :: OS Independent",
 	],
-	py_modules = ["pyfoma"],
+	package_dir = {"": "src"},
+	packages = setuptools.find_packages(where="src"),
 	python_requires = ">=3.6",
 	install_requires = [
 		"graphviz<0.16", "IPython"
