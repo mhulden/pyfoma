@@ -2,7 +2,7 @@
 
 import re as pyre, functools
 
-from pyfoma.fst import FST
+import pyfoma.fst as fst
 import pyfoma.algorithms as alg
 
 
@@ -75,7 +75,7 @@ class RegexParse:
             raise SyntaxError("End must be larger than start in character class range.")
         return ranges, negated
 
-    def compile(self) -> 'FST':
+    def compile(self) -> 'fst.FST':
         """Put it all together!
         'If you lie to the compiler, it will have its revenge.' — Henry Spencer."""
 
@@ -123,19 +123,19 @@ class RegexParse:
             elif op == 'CONTEXT': # Same as COMMA, possible future expansion
                 _merge(stack)
             elif op == 'UNION':
-                _append(stack, _pop(stack).union(_pop(stack)))
+                _append(stack, alg.union(_pop(stack), _pop(stack)))
             elif op == 'MINUS':
                 arg2, arg1 = _pop(stack), _pop(stack)
                 _append(stack, arg1.difference(arg2.determinize_unweighted()))
             elif op == 'INTERSECTION':
-                _append(stack, alg.filtered_coaccessible(_pop(stack).intersection(_pop(stack))))
+                _append(stack, alg.filtered_coaccessible(alg.intersection(_pop(stack), _pop(stack))))
             elif op == 'CONCAT':
                 second = _pop(stack)
-                _append(stack, alg.filtered_accessible(_pop(stack).concatenate(second)))
+                _append(stack, alg.filtered_accessible(alg.concatenate(_pop(stack), second)))
             elif op == 'STAR':
-                _append(stack, _pop(stack).kleene_closure())
+                _append(stack, alg.kleene_closure(_pop(stack)))
             elif op == 'PLUS':
-                _append(stack, _pop(stack).kleene_closure(mode = 'plus'))
+                _append(stack, alg.kleene_plus(_pop(stack)))
             elif op == 'COMPOSE':
                 arg2, arg1 = _pop(stack), _pop(stack)
                 _append(stack, alg.filtered_coaccessible(arg1.compose(arg2)))
@@ -143,7 +143,7 @@ class RegexParse:
                 _peek(stack).optional()
             elif op == 'RANGE':
                 rng = value.split(',')
-                lang: 'FST' = _pop(stack)
+                lang: 'fst.FST' = _pop(stack)
                 if len(rng) == 1:  # e.g. {3}
                     _append(stack, functools.reduce(lambda x, y: alg.concatenate(x, y), [lang]*int(value)))
                 elif rng[0] == '': # e.g. {,3}
@@ -159,16 +159,16 @@ class RegexParse:
                     _append(stack, alg.concatenate(lang1, lang2))
             elif op == 'CP':
                 arg2, arg1 = _pop(stack), _pop(stack)
-                _append(stack, alg.filtered_coaccessible(arg1.cross_product(arg2)))
+                _append(stack, alg.filtered_coaccessible(alg.cross_product(arg1, arg2)))
             elif op == 'CPOPTIONAL':
                 arg2, arg1 = _pop(stack), _pop(stack)
-                _append(stack, alg.filtered_coaccessible(arg1.cross_product(arg2, optional = True)))
+                _append(stack, alg.filtered_coaccessible(alg.cross_product(arg1, arg2, optional=True)))
             elif op == 'WEIGHT':
-                _peek(stack).add_weight(float(value)).push_weights()
+                _append(alg.pushed_weights(alg.added_weight(_pop(stack), float(value))))
             elif op == 'SYMBOL':
-                _append(stack, FST(label = (value,)))
+                _append(stack, fst.FST(label = (value,)))
             elif op == 'ANY':
-                _append(stack, FST(label = ('.',)))
+                _append(stack, fst.FST(label = ('.',)))
             elif op == 'VARIABLE':
                 if value not in self.defined:
                     self._error_report(SyntaxError, "Defined FST \"" + value + \
@@ -176,11 +176,11 @@ class RegexParse:
                 _append(stack, self.defined[value].copy_mod())
             elif op == 'CHAR_CLASS':
                 charranges, negated = self.character_class_parse(value)
-                _append(stack, FST.character_ranges(charranges, complement = negated))
+                _append(stack, fst.FST.character_ranges(charranges, complement = negated))
         if len(stack) != 1: # If there's still stuff on the stack, that's a syntax error
             self._error_report(SyntaxError,\
               "Something's happening here, and what it is ain't exactly clear...", 1, 0)
-        return _pop(stack).trim().epsilon_remove().push_weights().determinize_as_dfa().minimize_as_dfa().label_states_topology().cleanup_sigma()
+        return alg.labelled_states_topology(alg.minimized_as_dfa(alg.determinized_as_dfa(alg.pushed_weights(alg.epsilon_removed(alg.trimmed(_pop(stack))))))).cleanup_sigma()
 
     def tokenize(self) -> list:
         """Token, token, token, though the stream is broken... ride 'em in, tokenize!"""

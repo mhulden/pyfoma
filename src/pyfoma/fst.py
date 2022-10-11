@@ -5,10 +5,6 @@
 import heapq, operator, itertools, re as pyre, functools
 from collections import deque, defaultdict
 
-from pyfoma.private.regexparse import RegexParse
-from pyfoma.private.partition_refinement import PartitionRefinement
-
-
 def re(*args, **kwargs):
     return FST.re(*args, **kwargs)
 
@@ -90,7 +86,9 @@ class FST:
            functions -- a set of Python functions that the compiler can access when a function
                        is referenced in the regex, e.g. $^myfunc(...)
         """
-        myregex = RegexParse(regularexpression, defined, functions)
+        import pyfoma.private.regexparse as regexparse
+
+        myregex = regexparse.RegexParse(regularexpression, defined, functions)
         return myregex.compiled
 
     re = regex
