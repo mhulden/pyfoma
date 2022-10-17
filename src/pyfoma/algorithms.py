@@ -152,7 +152,7 @@ def scc(fst: 'FST') -> set:
 
 @_copy_param
 def pushed_weights(fst: 'FST') -> 'FST':
-    """Pushes weights toward the initial state. Calls dijkstra and maybe scc."""
+    """Returns a modified FST, pushing weights toward the initial state. Calls dijkstra and maybe scc."""
     potentials = {s:dijkstra(fst, s) for s in fst.states}
     for s, _, t in fst.all_transitions(fst.states):
         t.weight += potentials[t.targetstate] - potentials[s]
@@ -172,7 +172,7 @@ def pushed_weights(fst: 'FST') -> 'FST':
 
 @_copy_param
 def mapped_labels(fst: 'FST', map: dict) -> 'FST':
-    """Relabels a transducer with new labels from dictionary mapping.
+    """Returns a modified FST, relabeling the transducer with new labels from dictionary mapping.
 
     Example: ``map_labels(myfst, {'a':'', 'b':'a'})``"""
     for s in fst.states:
@@ -188,7 +188,7 @@ def mapped_labels(fst: 'FST', map: dict) -> 'FST':
 
 
 def epsilon_removed(fst: 'FST') -> 'FST':
-    """Creates new epsilon-free FSM equivalent to original."""
+    """Returns a modified FST, creating new epsilon-free FSM equivalent to original."""
     # For each state s, figure out the min-cost w' to hop to a state t with epsilons
     # Then, add the (non-e) transitions of state t to s, adding w' to their cost
     # Also, if t is final and s is not, make s final with cost t.finalweight ⊗ w'
@@ -258,7 +258,7 @@ def words(fst: 'FST'):
 
 @_copy_param
 def labelled_states_topology(fst: 'FST', mode = 'BFS') -> 'FST':
-    """Topologically sort and label states with numbers.
+    """Returns a modified FST, topologically sorting and labelling states with numbers.
     Keyword arguments:
     mode -- 'BFS', i.e. breadth-first search by default. 'DFS' is depth-first.
     """
@@ -351,19 +351,19 @@ def apply(fst: 'FST', word, inverse = False, weights = False):
 
 @_copy_param
 def determinized_unweighted(fst: 'FST') -> 'FST':
-    """Determinize with all zero weights."""
+    """Returns a modified FST, determinized with all zero weights."""
     return determinized(fst, staterep = lambda s, w: (s, 0.0), oplus = lambda *x: 0.0)
 
 
 def determinized_as_dfa(fst: 'FST') -> 'FST':
-    """Determinize as a DFA with weight as part of label, then apply unweighted det."""
+    """Returns a modified FST, determinized as a DFA with weight as part of label, then apply unweighted det."""
     newfst = fst.copy_mod(modlabel = lambda l, w: l + (w,), modweight = lambda l, w: 0.0)
     determinized = determinized_unweighted(newfst) # run det, then move weights back
     return determinized.copy_mod(modlabel = lambda l, _: l[:-1], modweight = lambda l, _: l[-1])
 
 
 def determinized(fst: 'FST', staterep = lambda s, w: (s, w), oplus = min) -> 'FST':
-    """Weighted determinization of FST."""
+    """Returns a modified FST, by weighted determinization of FST."""
     newfst = FST(alphabet = fst.alphabet.copy())
     firststate = frozenset({staterep(fst.initialstate, 0.0)})
     statesets = {firststate:newfst.initialstate}
@@ -406,7 +406,7 @@ def determinized(fst: 'FST', staterep = lambda s, w: (s, w), oplus = min) -> 'FS
 
 
 def minimized_as_dfa(fst: 'FST') -> 'FST':
-    """Minimize as a DFA with weight as part of label, then apply unweighted min."""
+    """Returns a modified FST, minimized as a DFA with weight as part of label, then apply unweighted min."""
     newfst = fst.copy_mod(modlabel = lambda l, w: l + (w,), modweight = lambda l, w: 0.0)
     minimized_fst = minimized(newfst) # minimize, and shift weights back
     return minimized_fst.copy_mod(modlabel = lambda l, _: l[:-1], modweight = lambda l, _: l[-1])
@@ -414,7 +414,7 @@ def minimized_as_dfa(fst: 'FST') -> 'FST':
 
 @_copy_param
 def minimized(fst: 'FST') -> 'FST':
-    """Minimize FSM by constrained reverse subset construction, Hopcroft-ish."""
+    """Returns a modified FST, minimized by constrained reverse subset construction, Hopcroft-ish."""
     reverse_index = create_reverse_index(fst)
     finalset, nonfinalset = fst.finalstates.copy(), fst.states - fst.finalstates
     initialpartition = [x for x in (finalset, nonfinalset) if len(x) > 0]
@@ -471,12 +471,12 @@ def create_reverse_index(fst: 'FST') -> dict:
 
 
 def minimized_brz(fst: 'FST') -> 'FST':
-    """Minimize through Brzozowski's trick."""
+    """Returns a modified FST, minimized through Brzozowski's trick."""
     return determinized(reversed_e(determinized(reversed_e(epsilon_removed(fst)))))
 
 
 def kleene_closure(fst: 'FST', mode = 'star') -> 'FST':
-    """self*. No epsilons here. If mode == 'plus', calculate self+."""
+    """Returns a modified FST, applying self*. No epsilons here. If mode == 'plus', calculate self+."""
     q1 = {k:State() for k in fst.states}
     newfst = FST(alphabet = fst.alphabet.copy())
 
@@ -500,15 +500,17 @@ def kleene_closure(fst: 'FST', mode = 'star') -> 'FST':
 
 
 def kleene_star(fst: 'FST') -> 'FST':
+    """Returns a modified FST, applying self*."""
     return kleene_closure(fst, mode='star')
 
 
 def kleene_plus(fst: 'FST') -> 'FST':
+    """Returns a modified FST, applying self+."""
     return kleene_closure(fst, mode='plus')
 
 @_copy_param
 def added_weight(fst: 'FST', weight) -> 'FST':
-    """Adds weight to the set of final states in the FST."""
+    """Returns a modified FST, adding weight to the set of final states in the FST."""
     for s in fst.finalstates:
         s.finalweight += weight
     return fst
@@ -516,7 +518,7 @@ def added_weight(fst: 'FST', weight) -> 'FST':
 
 @_copy_param
 def optional(fst: 'FST') -> 'FST':
-    """Same as T|'' ."""
+    """Returns a modified FST, calculated as T|'' ."""
     if fst.initialstate in fst.finalstates:
         return fst
     newinitial = State()
@@ -637,7 +639,7 @@ def compose(fst1: 'FST', fst2: 'FST') -> 'FST':
 
 @_copy_param
 def inverted(fst: 'FST') -> 'FST':
-    """Calculates the inverse of a transducer, i.e. flips label tuples around."""
+    """Returns a modified FST, calculating the inverse of a transducer, i.e. flips label tuples around."""
     for s in fst.states:
         s.transitions  = {lbl[::-1]:tr for lbl, tr in s.transitions.items()}
     return fst
@@ -650,7 +652,7 @@ def ignore(fst1: 'FST', fst2: 'FST') -> 'FST':
 
 
 def rewritten(fst: 'FST', *contexts, **flags) -> 'FST':
-    """Rewrite self in contexts in parallel, controlled by flags."""
+    """Returns a modified FST, rewriting self in contexts in parallel, controlled by flags."""
     defs = {'crossproducts': fst}
     defs['br'] = FST.re("'@<@'|'@>@'")
     defs['aux'] = FST.re(". - ($br|#)", defs)
@@ -680,7 +682,7 @@ def rewritten(fst: 'FST', *contexts, **flags) -> 'FST':
 
 @_copy_param
 def context_restricted(fst: 'FST', *contexts, rewrite = False) -> 'FST':
-    """self only allowed in the context L1 _ R1, or ... , or  L_n _ R_n."""
+    """Returns a modified FST, where self only allowed in the context L1 _ R1, or ... , or  L_n _ R_n."""
     for fsm in itertools.chain.from_iterable(contexts):
         fsm.alphabet.add('@=@') # Add aux sym to contexts so they don't match .
     fst.alphabet.add('@=@')    # Same for self
@@ -703,7 +705,7 @@ def context_restricted(fst: 'FST', *contexts, rewrite = False) -> 'FST':
 
 @_copy_param
 def projected(fst: 'FST', dim = 0) -> 'FST':
-    """Let's project! dim = -1 will get output proj regardless of # of tapes."""
+    """Returns a modified FST, by projecting fst. dim = -1 will get output proj regardless of # of tapes."""
     sl = slice(-1, None) if dim == -1 else slice(dim, dim+1)
     newalphabet = set()
     for s in fst.states:
@@ -719,7 +721,7 @@ def projected(fst: 'FST', dim = 0) -> 'FST':
 
 
 def reversed(fst: 'FST') -> 'FST':
-    """Reversal of FST, epsilon-free."""
+    """Returns a modified FST, reversing the FST, epsilon-free."""
     newfst = FST(alphabet = fst.alphabet.copy())
     newfst.initialstate = State()
     mapping = {k:State() for k in fst.states}
@@ -739,7 +741,7 @@ def reversed(fst: 'FST') -> 'FST':
 
 
 def reversed_e(fst: 'FST') -> 'FST':
-    """Reversal of FST, using epsilons."""
+    """Returns a modified FST, reversing the FST, using epsilons."""
     newfst = FST(alphabet = fst.alphabet.copy())
     newfst.initialstate = State(name = tuple(k.name for k in fst.finalstates))
     mapping = {k:State(name = k.name) for k in fst.states}

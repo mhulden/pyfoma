@@ -23,11 +23,17 @@ __status__     = "Prototype"
 from inspect import signature, Signature
 
 for mutating_name, original_func in _algorithms_to_add.items():
-    # Use the original func to make a mutating version
-
-    mutating_func = lambda self, *args, **kwargs: self.become(original_func(self, *args, **kwargs))
     original_signature = signature(original_func)
-    mutating_func.__name__ = mutating_name
+
+    # Use the original func to make a mutating version
+    create_in_place_func = original_signature.return_annotation == 'FST'
+
+    if create_in_place_func:
+        new_func = lambda self, *args, **kwargs: self.become(original_func(self, *args, **kwargs))
+    else:
+        new_func = lambda self, *args, **kwargs: original_func(self, *args, **kwargs)
+
+    new_func.__name__ = mutating_name
 
     # Replace 'fst' or 'fst1' with 'self'
     self_param = original_signature.parameters.get('fst') or original_signature.parameters.get('fst1')
@@ -36,16 +42,19 @@ for mutating_name, original_func in _algorithms_to_add.items():
         original_signature = original_signature.replace(parameters=[self_param.replace(name='self')] + other_params)
 
     # If the method now modifies the FST in place and doesn't have a return, remove the return from the signature
-    if "Returns a modified FST" in original_func.__doc__:
-        mutating_func.__doc__ = original_func.__doc__.replace("Returns a modified FST", "Mutates the FST")
-        mutating_func.__signature__ = original_signature.replace(return_annotation=Signature.empty)
+    if create_in_place_func:
+        if "Returns a modified FST" in original_func.__doc__:
+            new_func.__doc__ = original_func.__doc__.replace("Returns a modified FST", "Mutates the FST")
+        else:
+            new_func.__doc__ = "Mutates the caller FST.\n" + original_func.__doc__
+        new_func.__signature__ = original_signature.replace(return_annotation=Signature.empty)
     else:
-        mutating_func.__doc__ = original_func.__doc__
-        mutating_func.__signature__ = original_signature
+        new_func.__doc__ = original_func.__doc__
+        new_func.__signature__ = original_signature
 
-    mutating_func.__annotations__ = original_func.__annotations__
+    new_func.__annotations__ = original_func.__annotations__
 
     # Finally, add the new method to the FST class
-    setattr(FST, mutating_name, mutating_func)
+    setattr(FST, mutating_name, new_func)
 
 
