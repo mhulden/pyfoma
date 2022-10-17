@@ -1,11 +1,12 @@
 #!/usr/bin/env python
 
 """Defines common algorithms over FSTs"""
-import pyfoma.fst as pyfoma_fst
+from pyfoma.fst import FST, State, Transition
 import pyfoma.private.partition_refinement as partition_refinement
 
 import heapq, operator, itertools, functools
 from collections import deque
+from typing import Dict, Callable
 
 
 # region Function Wrappers
@@ -13,7 +14,7 @@ def _copy_param(func):
     """Automatically uses a copy of the FST parameter instead of the original value, in order to avoid mutating the
     object. Use on any method that returns a modified version of an FST."""
     @functools.wraps(func)
-    def wrapper_decorator(fst: 'pyfoma_fst.FST', **kwargs):
+    def wrapper_decorator(fst: 'FST', **kwargs):
         return func(fst.__copy__(), **kwargs)
 
     return wrapper_decorator
@@ -25,7 +26,7 @@ def _harmonize_alphabet(func):
        .-symbols, the transitions with . are expanded to include the symbols that
        are present in the other FST."""
     @functools.wraps(func)
-    def wrapper_decorator(fst1: 'pyfoma_fst.FST', fst2: 'pyfoma_fst.FST', **kwargs):
+    def wrapper_decorator(fst1: 'FST', fst2: 'FST', **kwargs):
         for A, B in [(fst1, fst2), (fst1, fst2)]:
             if '.' in A.alphabet and (A.alphabet - {'.'}) != (B.alphabet - {'.'}):
                 Aexpand = B.alphabet - A.alphabet - {'.', ''}
@@ -51,15 +52,14 @@ def _harmonize_alphabet(func):
 
 
 @_copy_param
-def trimmed(fst: 'pyfoma_fst.FST') -> 'pyfoma_fst.FST':
-    """Returns a new FST, removing states that aren't both accessible and coaccessible."""
+def trimmed(fst: 'FST') -> 'FST':
+    """Returns a modified FST, removing states that aren't both accessible and coaccessible."""
     return filtered_coaccessible(filtered_accessible(fst))
 
 
-
 @_copy_param
-def filtered_accessible(fst: 'pyfoma_fst.FST') -> 'pyfoma_fst.FST':
-    """Returns a new FST, removing states that are not on a path from the initial state."""
+def filtered_accessible(fst: 'FST') -> 'FST':
+    """Returns a modified FST, removing states that are not on a path from the initial state."""
     explored = { fst.initialstate }
     stack = deque([fst.initialstate])
     while stack:
@@ -75,8 +75,8 @@ def filtered_accessible(fst: 'pyfoma_fst.FST') -> 'pyfoma_fst.FST':
 
 
 @_copy_param
-def filtered_coaccessible(fst: 'pyfoma_fst.FST') -> 'pyfoma_fst.FST':
-    """Returns a new FST, removing states and transitions to states that have no path to a final state."""
+def filtered_coaccessible(fst: 'FST') -> 'FST':
+    """Returns a modified FST, removing states and transitions to states that have no path to a final state."""
     explored = {fst.initialstate}
     stack = deque([fst.initialstate])
     inverse = {s: set() for s in fst.states}  # store all preceding arcs here
@@ -106,7 +106,7 @@ def filtered_coaccessible(fst: 'pyfoma_fst.FST') -> 'pyfoma_fst.FST':
     return fst
 
 
-def scc(fst: 'pyfoma_fst.FST') -> set:
+def scc(fst: 'FST') -> set:
     """Calculate the strongly connected components of an FST.
 
        This is a basic implementation of Tarjan's (1972) algorithm.
@@ -151,9 +151,9 @@ def scc(fst: 'pyfoma_fst.FST') -> set:
 
 
 @_copy_param
-def pushed_weights(fst: 'pyfoma_fst.FST') -> 'pyfoma_fst.FST':
+def pushed_weights(fst: 'FST') -> 'FST':
     """Pushes weights toward the initial state. Calls dijkstra and maybe scc."""
-    potentials = {s:dijkstra(fst) for s in fst.states}
+    potentials = {s:dijkstra(fst, s) for s in fst.states}
     for s, _, t in fst.all_transitions(fst.states):
         t.weight += potentials[t.targetstate] - potentials[s]
     for s in fst.finalstates:
@@ -171,7 +171,7 @@ def pushed_weights(fst: 'pyfoma_fst.FST') -> 'pyfoma_fst.FST':
 
 
 @_copy_param
-def mapped_labels(fst: 'pyfoma_fst.FST', map: dict) -> 'pyfoma_fst.FST':
+def mapped_labels(fst: 'FST', map: dict) -> 'FST':
     """Relabels a transducer with new labels from dictionary mapping.
 
     Example: ``map_labels(myfst, {'a':'', 'b':'a'})``"""
@@ -187,14 +187,14 @@ def mapped_labels(fst: 'pyfoma_fst.FST', map: dict) -> 'pyfoma_fst.FST':
     return fst
 
 
-def epsilon_removed(fst: 'pyfoma_fst.FST') -> 'pyfoma_fst.FST':
+def epsilon_removed(fst: 'FST') -> 'FST':
     """Creates new epsilon-free FSM equivalent to original."""
     # For each state s, figure out the min-cost w' to hop to a state t with epsilons
     # Then, add the (non-e) transitions of state t to s, adding w' to their cost
     # Also, if t is final and s is not, make s final with cost t.finalweight ⊗ w'
     # If s and t are both final, make s's finalweight s.final ⊕ (t.finalweight ⊗ w')
 
-    eclosures = {s:epsilon_closure(fst) for s in fst.states}
+    eclosures = {s:epsilon_closure(fst, s) for s in fst.states}
     if all(len(ec) == 0 for ec in eclosures.values()): # bail, no epsilon transitions
         return fst.__copy__()
     newfst, mapping = fst.copy_filtered(labelfilter = lambda lbl: any(len(sublabel) != 0 for sublabel in lbl))
@@ -213,7 +213,7 @@ def epsilon_removed(fst: 'pyfoma_fst.FST') -> 'pyfoma_fst.FST':
     return newfst
 
 
-def epsilon_closure(fst: 'pyfoma_fst.FST', state) -> dict:
+def epsilon_closure(fst: 'FST', state) -> dict:
     """Finds, for a state the set of states reachable by epsilon-hopping."""
     explored, cntr = {}, itertools.count()
     q = [(0.0, next(cntr), state)]
@@ -227,7 +227,7 @@ def epsilon_closure(fst: 'pyfoma_fst.FST', state) -> dict:
     return explored
 
 
-def dijkstra(fst: 'pyfoma_fst.FST', state) -> float:
+def dijkstra(fst: 'FST', state) -> float:
     """The cost of the cheapest path from state to a final state. Go Edsger!"""
     explored, cntr = {state}, itertools.count()  # decrease-key is for wusses
     Q = [(0.0, next(cntr), state)] # Middle is dummy cntr to avoid key ties
@@ -245,7 +245,7 @@ def dijkstra(fst: 'pyfoma_fst.FST', state) -> float:
     return float("inf")
 
 
-def words(fst: 'pyfoma_fst.FST'):
+def words(fst: 'FST'):
     """A generator to yield all words. Yay BFS!"""
     Q = deque([(fst.initialstate, 0.0, [])])
     while Q:
@@ -257,7 +257,7 @@ def words(fst: 'pyfoma_fst.FST'):
 
 
 @_copy_param
-def labelled_states_topology(fst: 'pyfoma_fst.FST', mode = 'BFS') -> 'pyfoma_fst.FST':
+def labelled_states_topology(fst: 'FST', mode = 'BFS') -> 'FST':
     """Topologically sort and label states with numbers.
     Keyword arguments:
     mode -- 'BFS', i.e. breadth-first search by default. 'DFS' is depth-first.
@@ -275,12 +275,12 @@ def labelled_states_topology(fst: 'pyfoma_fst.FST', mode = 'BFS') -> 'pyfoma_fst
     return fst
 
 
-def words_nbest(fst: 'pyfoma_fst.FST', n) -> list:
+def words_nbest(fst: 'FST', n) -> list:
     """Finds the n cheapest word in an FST, returning a list."""
     return list(itertools.islice(words_cheapest(fst), n))
 
 
-def words_cheapest(fst: 'pyfoma_fst.FST'):
+def words_cheapest(fst: 'FST'):
     """A generator to yield all words in order of cost, cheapest first."""
     cntr = itertools.count()
     Q = [(0.0, next(cntr), fst.initialstate, [])]
@@ -295,7 +295,7 @@ def words_cheapest(fst: 'pyfoma_fst.FST'):
                 heapq.heappush(Q, (cost + t.weight, next(cntr), t.targetstate, seq + [label]))
 
 
-def tokenize_against_alphabet(fst: 'pyfoma_fst.FST', word) -> list:
+def tokenize_against_alphabet(fst: 'FST', word) -> list:
     """Tokenize a string using the alphabet of the automaton."""
     tokens = []
     start = 0
@@ -309,22 +309,62 @@ def tokenize_against_alphabet(fst: 'pyfoma_fst.FST', word) -> list:
     return tokens
 
 
+def generate(fst: 'FST', word, weights = False):
+    """Pass word through FST and return generator that yields all outputs."""
+    yield from apply(fst, word, inverse = False, weights = weights)
+
+
+def analyze(fst: 'FST', word, weights = False):
+    """Pass word through FST and return generator that yields all inputs."""
+    yield from apply(fst, word, inverse = True, weights = weights)
+
+
+def apply(fst: 'FST', word, inverse = False, weights = False):
+    """Pass word through FST and return generator that yields outputs.
+       if inverse == True, map from range to domain.
+       weights is by default False. To see the cost, set weights to True."""
+    IN, OUT = [-1, 0] if inverse else [0, -1] # Tuple positions for input, output
+    cntr = itertools.count()
+    w = tokenize_against_alphabet(fst, word)
+    Q, output = [], []
+    heapq.heappush(Q, (0.0, 0, next(cntr), [], fst.initialstate)) # (cost, -pos, output, state)
+    while Q:
+        cost, negpos, _, output, state = heapq.heappop(Q)
+        if state == None and -negpos == len(w):
+            if weights == False:
+                yield ''.join(output)
+            else:
+                yield (''.join(output), cost)
+        elif state != None:
+            if state in fst.finalstates:
+                heapq.heappush(Q, (cost + state.finalweight, negpos, next(cntr), output, None))
+            for lbl, t in state.all_transitions():
+                if lbl[IN] == '':
+                    heapq.heappush(Q, (cost + t.weight, negpos, next(cntr), output + [lbl[OUT]], t.targetstate))
+                elif -negpos < len(w):
+                    nextsym = w[-negpos] if w[-negpos] in fst.alphabet else '.'
+                    appendedsym = w[-negpos] if nextsym == '.' else lbl[OUT]
+                    if nextsym == lbl[IN]:
+                        heapq.heappush(Q, (cost + t.weight, negpos - 1, next(cntr), output + [appendedsym], t.targetstate))
+
+
+
 @_copy_param
-def determinized_unweighted(fst: 'pyfoma_fst.FST') -> 'pyfoma_fst.FST':
+def determinized_unweighted(fst: 'FST') -> 'FST':
     """Determinize with all zero weights."""
-    return determinized(staterep = lambda s, w: (s, 0.0), oplus = lambda *x: 0.0)
+    return determinized(fst, staterep = lambda s, w: (s, 0.0), oplus = lambda *x: 0.0)
 
 
-def determinized_as_dfa(fst: 'pyfoma_fst.FST') -> 'pyfoma_fst.FST':
+def determinized_as_dfa(fst: 'FST') -> 'FST':
     """Determinize as a DFA with weight as part of label, then apply unweighted det."""
     newfst = fst.copy_mod(modlabel = lambda l, w: l + (w,), modweight = lambda l, w: 0.0)
-    determinized = newfst.determinize_unweighted() # run det, then move weights back
+    determinized = determinized_unweighted(newfst) # run det, then move weights back
     return determinized.copy_mod(modlabel = lambda l, _: l[:-1], modweight = lambda l, _: l[-1])
 
 
-def determinized(fst: 'pyfoma_fst.FST', staterep = lambda s, w: (s, w), oplus = min) -> 'pyfoma_fst.FST':
+def determinized(fst: 'FST', staterep = lambda s, w: (s, w), oplus = min) -> 'FST':
     """Weighted determinization of FST."""
-    newfst = pyfoma_fst.FST(alphabet = fst.alphabet.copy())
+    newfst = FST(alphabet = fst.alphabet.copy())
     firststate = frozenset({staterep(fst.initialstate, 0.0)})
     statesets = {firststate:newfst.initialstate}
     if fst.initialstate in fst.finalstates:
@@ -350,7 +390,7 @@ def determinized(fst: 'pyfoma_fst.FST', staterep = lambda s, w: (s, w), oplus = 
             newQ = frozenset(staterep(t.targetstate, t.weight + residuals[s] - wprime) for s, t in tset)
             if newQ not in statesets:
                 Q.append(newQ)
-                newstate = pyfoma_fst.State()
+                newstate = State()
                 statesets[newQ] = newstate
                 newfst.states.add(statesets[newQ])
                 #statesets[newQ].name = {(s.name, w) if w != 0.0 else s.name for s, w in newQ}
@@ -365,16 +405,15 @@ def determinized(fst: 'pyfoma_fst.FST', staterep = lambda s, w: (s, w), oplus = 
     return newfst
 
 
-def minimized_as_dfa(fst: 'pyfoma_fst.FST') -> 'pyfoma_fst.FST':
+def minimized_as_dfa(fst: 'FST') -> 'FST':
     """Minimize as a DFA with weight as part of label, then apply unweighted min."""
     newfst = fst.copy_mod(modlabel = lambda l, w: l + (w,), modweight = lambda l, w: 0.0)
-    minimized = newfst.minimize() # minimize, and shift weights back
-    self = minimized.copy_mod(modlabel = lambda l, _: l[:-1], modweight = lambda l, _: l[-1])
-    return self
+    minimized_fst = minimized(newfst) # minimize, and shift weights back
+    return minimized_fst.copy_mod(modlabel = lambda l, _: l[:-1], modweight = lambda l, _: l[-1])
 
 
 @_copy_param
-def minimized(fst: 'pyfoma_fst.FST') -> 'pyfoma_fst.FST':
+def minimized(fst: 'FST') -> 'FST':
     """Minimize FSM by constrained reverse subset construction, Hopcroft-ish."""
     reverse_index = create_reverse_index(fst)
     finalset, nonfinalset = fst.finalstates.copy(), fst.states - fst.finalstates
@@ -393,12 +432,12 @@ def minimized(fst: 'pyfoma_fst.FST') -> 'pyfoma_fst.FST':
     return _merged_statesets(fst, equivalenceclasses)
 
 
-def _merged_statesets(fst: 'pyfoma_fst.FST', equivalenceclasses: set) -> 'pyfoma_fst.FST':
+def _merged_statesets(fst: 'FST', equivalenceclasses: set) -> 'FST':
     """Merge equivalent states given as a set of sets."""
     eqmap = {s[i]:s[0] for s in equivalenceclasses for i in range(len(s))}
     representerstates = set(eqmap.values())
-    newfst = pyfoma_fst.FST(alphabet = fst.alphabet.copy())
-    statemap = {s:pyfoma_fst.State() for s in fst.states if s in representerstates}
+    newfst = FST(alphabet = fst.alphabet.copy())
+    statemap = {s:State() for s in fst.states if s in representerstates}
     newfst.initialstate = statemap[eqmap[fst.initialstate]]
     for s, lbl, t in fst.all_transitions(fst.states):
         if s in representerstates:
@@ -411,7 +450,7 @@ def _merged_statesets(fst: 'pyfoma_fst.FST', equivalenceclasses: set) -> 'pyfoma
     return newfst
 
 
-def find_sourcestates(fst: 'pyfoma_fst.FST', index, stateset):
+def find_sourcestates(fst: 'FST', index, stateset):
     """Create generator that yields sourcestates for a set of target states.
        Yields the label, and the set of sourcestates."""
     all_labels = {l for s in stateset for l in index[s].keys()}
@@ -423,7 +462,7 @@ def find_sourcestates(fst: 'pyfoma_fst.FST', index, stateset):
         yield l, sources
 
 
-def create_reverse_index(fst: 'pyfoma_fst.FST') -> dict:
+def create_reverse_index(fst: 'FST') -> dict:
     """Returns dictionary of transitions in reverse (indexed by state)."""
     idx = {s:{} for s in fst.states}
     for s, lbl, t in fst.all_transitions(fst.states):
@@ -431,15 +470,15 @@ def create_reverse_index(fst: 'pyfoma_fst.FST') -> dict:
     return idx
 
 
-def minimized_brz(fst: 'pyfoma_fst.FST') -> 'pyfoma_fst.FST':
+def minimized_brz(fst: 'FST') -> 'FST':
     """Minimize through Brzozowski's trick."""
     return determinized(reversed_e(determinized(reversed_e(epsilon_removed(fst)))))
 
 
-def kleene_closure(fst: 'pyfoma_fst.FST', mode = 'star') -> 'pyfoma_fst.FST':
+def kleene_closure(fst: 'FST', mode = 'star') -> 'FST':
     """self*. No epsilons here. If mode == 'plus', calculate self+."""
-    q1 = {k:pyfoma_fst.State() for k in fst.states}
-    newfst = pyfoma_fst.FST(alphabet = fst.alphabet.copy())
+    q1 = {k:State() for k in fst.states}
+    newfst = FST(alphabet = fst.alphabet.copy())
 
     for lbl, t in fst.initialstate.all_transitions():
         newfst.initialstate.add_transition(q1[t.targetstate], lbl, t.weight)
@@ -460,15 +499,15 @@ def kleene_closure(fst: 'pyfoma_fst.FST', mode = 'star') -> 'pyfoma_fst.FST':
     return newfst
 
 
-def kleene_star(fst: 'pyfoma_fst.FST') -> 'pyfoma_fst.FST':
+def kleene_star(fst: 'FST') -> 'FST':
     return kleene_closure(fst, mode='star')
 
 
-def kleene_plus(fst: 'pyfoma_fst.FST') -> 'pyfoma_fst.FST':
+def kleene_plus(fst: 'FST') -> 'FST':
     return kleene_closure(fst, mode='plus')
 
 @_copy_param
-def added_weight(fst: 'pyfoma_fst.FST', weight) -> 'pyfoma_fst.FST':
+def added_weight(fst: 'FST', weight) -> 'FST':
     """Adds weight to the set of final states in the FST."""
     for s in fst.finalstates:
         s.finalweight += weight
@@ -476,11 +515,11 @@ def added_weight(fst: 'pyfoma_fst.FST', weight) -> 'pyfoma_fst.FST':
 
 
 @_copy_param
-def optional(fst: 'pyfoma_fst.FST') -> 'pyfoma_fst.FST':
+def optional(fst: 'FST') -> 'FST':
     """Same as T|'' ."""
     if fst.initialstate in fst.finalstates:
         return fst
-    newinitial = pyfoma_fst.State()
+    newinitial = State()
 
     for lbl, t in fst.initialstate.all_transitions():
         newinitial.add_transition(t.targetstate, lbl, t.weight)
@@ -493,10 +532,10 @@ def optional(fst: 'pyfoma_fst.FST') -> 'pyfoma_fst.FST':
 
 
 @_harmonize_alphabet
-def concatenate(fst1: 'pyfoma_fst.FST', fst2: 'pyfoma_fst.FST') -> 'pyfoma_fst.FST':
+def concatenate(fst1: 'FST', fst2: 'FST') -> 'FST':
     """Concatenation of T1T2. No epsilons. May produce non-accessible states."""
     ocopy, _ = fst2.copy_filtered() # Need to copy since self may equal other
-    q1q2 = {k:pyfoma_fst.State() for k in fst1.states | ocopy.states}
+    q1q2 = {k:State() for k in fst1.states | ocopy.states}
 
     for s, lbl, t in fst1.all_transitions(q1q2.keys()):
         q1q2[s].add_transition(q1q2[t.targetstate], lbl, t.weight)
@@ -504,7 +543,7 @@ def concatenate(fst1: 'pyfoma_fst.FST', fst2: 'pyfoma_fst.FST') -> 'pyfoma_fst.F
         for lbl2, t2 in ocopy.initialstate.all_transitions():
             q1q2[s].add_transition(q1q2[t2.targetstate], lbl2, t2.weight + s.finalweight)
 
-    newfst = pyfoma_fst.FST()
+    newfst = FST()
     newfst.initialstate = q1q2[fst1.initialstate]
     newfst.finalstates = {q1q2[f] for f in ocopy.finalstates}
     for s in ocopy.finalstates:
@@ -518,7 +557,7 @@ def concatenate(fst1: 'pyfoma_fst.FST', fst2: 'pyfoma_fst.FST') -> 'pyfoma_fst.F
 
 
 @_harmonize_alphabet
-def cross_product(fst1: 'pyfoma_fst.FST', fst2: 'pyfoma_fst.FST', optional: bool = False) -> 'pyfoma_fst.FST':
+def cross_product(fst1: 'FST', fst2: 'FST', optional: bool = False) -> 'FST':
     """Perform the cross-product of T1, T2 through composition.
        Keyword arguments:
        optional -- if True, calculates T1:T2 | T1."""
@@ -531,7 +570,7 @@ def cross_product(fst1: 'pyfoma_fst.FST', fst2: 'pyfoma_fst.FST', optional: bool
 
 
 @_harmonize_alphabet
-def compose(fst1: 'pyfoma_fst.FST', fst2: 'pyfoma_fst.FST') -> 'pyfoma_fst.FST':
+def compose(fst1: 'FST', fst2: 'FST') -> 'FST':
     """Composition of A,B; will expand an acceptor into 2-tape FST on-the-fly."""
 
     def _mergetuples(x: tuple, y: tuple) -> tuple:
@@ -549,7 +588,7 @@ def compose(fst1: 'pyfoma_fst.FST', fst2: 'pyfoma_fst.FST') -> 'pyfoma_fst.FST':
     # Mode 1: x:0 B=wait (>1), x:y y:z (>0)
     # Mode 2: A=wait 0:y (>2), x:y y:z (>0)
 
-    newfst = pyfoma_fst.FST()
+    newfst = FST()
     Q = deque([(fst1.initialstate, fst2.initialstate, 0)])
     S = {(fst1.initialstate, fst2.initialstate, 0): newfst.initialstate}
     while Q:
@@ -567,7 +606,7 @@ def compose(fst1: 'pyfoma_fst.FST', fst2: 'pyfoma_fst.FST') -> 'pyfoma_fst.FST':
                         target2 = intrans[1].targetstate  # Transition
                         if (target1, target2, 0) not in S:
                             Q.append((target1, target2, 0))
-                            S[(target1, target2, 0)] = pyfoma_fst.State()
+                            S[(target1, target2, 0)] = State()
                             newfst.states.add(S[(target1, target2, 0)])
                         # Keep intermediate
                         # currentstate.add_transition(S[(target1, target2)], outtrans[1].label[:-1] + intrans[1].label, outtrans[1].weight + intrans[1].weight)
@@ -579,7 +618,7 @@ def compose(fst1: 'pyfoma_fst.FST', fst2: 'pyfoma_fst.FST') -> 'pyfoma_fst.FST':
             target1, target2 = outtrans[1].targetstate, B
             if (target1, target2, 1) not in S:
                 Q.append((target1, target2, 1))
-                S[(target1, target2, 1)] = pyfoma_fst.State()
+                S[(target1, target2, 1)] = State()
                 newfst.states.add(S[(target1, target2, 1)])
             newlabel = outtrans[1].label
             currentstate.add_transition(S[(target1, target2, 1)], newlabel, outtrans[1].weight)
@@ -589,7 +628,7 @@ def compose(fst1: 'pyfoma_fst.FST', fst2: 'pyfoma_fst.FST') -> 'pyfoma_fst.FST':
             target1, target2 = A, intrans[1].targetstate
             if (target1, target2, 2) not in S:
                 Q.append((target1, target2, 2))
-                S[(target1, target2, 2)] = pyfoma_fst.State()
+                S[(target1, target2, 2)] = State()
                 newfst.states.add(S[(target1, target2, 2)])
             newlabel = intrans[1].label
             currentstate.add_transition(S[(target1, target2, 2)], newlabel, intrans[1].weight)
@@ -597,73 +636,73 @@ def compose(fst1: 'pyfoma_fst.FST', fst2: 'pyfoma_fst.FST') -> 'pyfoma_fst.FST':
 
 
 @_copy_param
-def inverted(fst: 'pyfoma_fst.FST') -> 'pyfoma_fst.FST':
+def inverted(fst: 'FST') -> 'FST':
     """Calculates the inverse of a transducer, i.e. flips label tuples around."""
     for s in fst.states:
         s.transitions  = {lbl[::-1]:tr for lbl, tr in s.transitions.items()}
     return fst
 
 
-def ignore(fst1: 'pyfoma_fst.FST', fst2: 'pyfoma_fst.FST') -> 'pyfoma_fst.FST':
+def ignore(fst1: 'FST', fst2: 'FST') -> 'FST':
     """A, ignoring intervening instances of B."""
-    newfst = pyfoma_fst.FST.re("$^output($A @ ('.'|'':$B)*)", {'A': fst1, 'B': fst2})
+    newfst = FST.re("$^output($A @ ('.'|'':$B)*)", {'A': fst1, 'B': fst2})
     return newfst
 
 
-def rewritten(fst: 'pyfoma_fst.FST', *contexts, **flags) -> 'pyfoma_fst.FST':
+def rewritten(fst: 'FST', *contexts, **flags) -> 'FST':
     """Rewrite self in contexts in parallel, controlled by flags."""
     defs = {'crossproducts': fst}
-    defs['br'] = pyfoma_fst.FST.re("'@<@'|'@>@'")
-    defs['aux'] = pyfoma_fst.FST.re(". - ($br|#)", defs)
-    defs['dotted'] = pyfoma_fst.FST.re(".*-(.* '@<@' '@>@' '@<@' '@>@' .*)")
-    defs['base'] = pyfoma_fst.FST.re("$dotted @ # ($aux | '@<@' $crossproducts '@>@')* #", defs)
+    defs['br'] = FST.re("'@<@'|'@>@'")
+    defs['aux'] = FST.re(". - ($br|#)", defs)
+    defs['dotted'] = FST.re(".*-(.* '@<@' '@>@' '@<@' '@>@' .*)")
+    defs['base'] = FST.re("$dotted @ # ($aux | '@<@' $crossproducts '@>@')* #", defs)
     if len(contexts) > 0:
-        center = pyfoma_fst.FST.re("'@<@' (.-'@>@')* '@>@'")
+        center = FST.re("'@<@' (.-'@>@')* '@>@'")
         lrpairs = ([l.ignore(defs['br']), r.ignore(defs['br'])] for l,r in contexts)
         defs['rule'] = center.context_restrict(*lrpairs, rewrite = True).compose(defs['base'])
     else:
         defs['rule'] = defs['base']
-    defs['remrewr'] = pyfoma_fst.FST.re("'@<@':'' (.-'@>@')* '@>@':''") # worsener
-    worseners = [pyfoma_fst.FST.re(".* $remrewr (.|$remrewr)*", defs)]
+    defs['remrewr'] = FST.re("'@<@':'' (.-'@>@')* '@>@':''") # worsener
+    worseners = [FST.re(".* $remrewr (.|$remrewr)*", defs)]
     if flags.get('longest', False) == 'True':
-        worseners.append(pyfoma_fst.FST.re(".* '@<@' $aux+ '':('@>@' '@<@'?) $aux ($br:''|'':$br|$aux)* .*", defs))
+        worseners.append(FST.re(".* '@<@' $aux+ '':('@>@' '@<@'?) $aux ($br:''|'':$br|$aux)* .*", defs))
     if flags.get('leftmost', False) == 'True':
-        worseners.append(pyfoma_fst.FST.re(\
+        worseners.append(FST.re(\
              ".* '@<@':'' $aux+ ('':'@<@' $aux* '':'@>@' $aux+ '@>@':'' .* | '':'@<@' $aux* '@>@':'' $aux* '':'@>@' .*)", defs))
     if flags.get('shortest', False) == 'True':
-        worseners.append(pyfoma_fst.FST.re(".* '@<@' $aux* '@>@':'' $aux+ '':'@>@' .*", defs))
+        worseners.append(FST.re(".* '@<@' $aux* '@>@':'' $aux+ '':'@>@' .*", defs))
     defs['worsen'] = functools.reduce(lambda x, y: x.union(y), worseners).determinize_unweighted().minimize()
-    defs['rewr'] = pyfoma_fst.FST.re("$^output($^input($rule) @ $worsen)", defs)
-    final = pyfoma_fst.FST.re("(.* - $rewr) @ $rule", defs)
+    defs['rewr'] = FST.re("$^output($^input($rule) @ $worsen)", defs)
+    final = FST.re("(.* - $rewr) @ $rule", defs)
     newfst = final.map_labels({s:'' for s in ['@<@','@>@','#']}).epsilon_remove().determinize_as_dfa().minimize()
     return newfst
 
 
 @_copy_param
-def context_restricted(fst: 'pyfoma_fst.FST', *contexts, rewrite = False) -> 'pyfoma_fst.FST':
+def context_restricted(fst: 'FST', *contexts, rewrite = False) -> 'FST':
     """self only allowed in the context L1 _ R1, or ... , or  L_n _ R_n."""
     for fsm in itertools.chain.from_iterable(contexts):
         fsm.alphabet.add('@=@') # Add aux sym to contexts so they don't match .
     fst.alphabet.add('@=@')    # Same for self
     if not rewrite:
-        cs = (pyfoma_fst.FST.re("$lc '@=@' (.-'@=@')* '@=@' $rc", \
+        cs = (FST.re("$lc '@=@' (.-'@=@')* '@=@' $rc", \
              {'lc':lc.copy_mod().map_labels({'#': '@#@'}),\
              'rc':rc.copy_mod().map_labels({'#': '@#@'})}) for lc, rc in contexts)
     else:
-        cs = (pyfoma_fst.FST.re("$lc '@=@' (.-'@=@')* '@=@' $rc", {'lc':lc, 'rc':rc}) for lc, rc in contexts)
+        cs = (FST.re("$lc '@=@' (.-'@=@')* '@=@' $rc", {'lc':lc, 'rc':rc}) for lc, rc in contexts)
     cunion = functools.reduce(lambda x, y: x.union(y), cs).determinize().minimize()
-    r = pyfoma_fst.FST.re("(.-'@=@')* '@=@' $c '@=@' (.-'@=@')* - ((.-'@=@')* $cunion (.-'@=@')*)",\
+    r = FST.re("(.-'@=@')* '@=@' $c '@=@' (.-'@=@')* - ((.-'@=@')* $cunion (.-'@=@')*)",\
                    {'c':fst, 'cunion':cunion})
     r = r.map_labels({'@=@':''}).epsilon_remove().determinize_as_dfa().minimize()
     for fsm in itertools.chain.from_iterable(contexts):
         fsm.alphabet -= {'@=@'} # Remove aux syms from contexts
-    r = pyfoma_fst.FST.re(".? (.-'@#@')* .? - $r", {'r': r})
+    r = FST.re(".? (.-'@#@')* .? - $r", {'r': r})
     newfst = r.map_labels({'@#@':''}).epsilon_remove().determinize_as_dfa().minimize()
     return newfst
 
 
 @_copy_param
-def projected(fst: 'pyfoma_fst.FST', dim = 0) -> 'pyfoma_fst.FST':
+def projected(fst: 'FST', dim = 0) -> 'FST':
     """Let's project! dim = -1 will get output proj regardless of # of tapes."""
     sl = slice(-1, None) if dim == -1 else slice(dim, dim+1)
     newalphabet = set()
@@ -679,11 +718,11 @@ def projected(fst: 'pyfoma_fst.FST', dim = 0) -> 'pyfoma_fst.FST':
     return fst
 
 
-def reversed(fst: 'pyfoma_fst.FST') -> 'pyfoma_fst.FST':
+def reversed(fst: 'FST') -> 'FST':
     """Reversal of FST, epsilon-free."""
-    newfst = pyfoma_fst.FST(alphabet = fst.alphabet.copy())
-    newfst.initialstate = pyfoma_fst.State()
-    mapping = {k:pyfoma_fst.State() for k in fst.states}
+    newfst = FST(alphabet = fst.alphabet.copy())
+    newfst.initialstate = State()
+    mapping = {k:State() for k in fst.states}
     newfst.states = set(mapping.values()) | {newfst.initialstate}
     newfst.finalstates = {mapping[fst.initialstate]}
     if fst.initialstate in fst.finalstates:
@@ -699,11 +738,11 @@ def reversed(fst: 'pyfoma_fst.FST') -> 'pyfoma_fst.FST':
     return newfst
 
 
-def reversed_e(fst: 'pyfoma_fst.FST') -> 'pyfoma_fst.FST':
+def reversed_e(fst: 'FST') -> 'FST':
     """Reversal of FST, using epsilons."""
-    newfst = pyfoma_fst.FST(alphabet = fst.alphabet.copy())
-    newfst.initialstate = pyfoma_fst.State(name = tuple(k.name for k in fst.finalstates))
-    mapping = {k:pyfoma_fst.State(name = k.name) for k in fst.states}
+    newfst = FST(alphabet = fst.alphabet.copy())
+    newfst.initialstate = State(name = tuple(k.name for k in fst.finalstates))
+    mapping = {k:State(name = k.name) for k in fst.states}
     for t in fst.finalstates:
         newfst.initialstate.add_transition(mapping[t], ('',), t.finalweight)
 
@@ -717,10 +756,10 @@ def reversed_e(fst: 'pyfoma_fst.FST') -> 'pyfoma_fst.FST':
 
 
 @_harmonize_alphabet
-def union(fst1: 'pyfoma_fst.FST', fst2: 'pyfoma_fst.FST') -> 'pyfoma_fst.FST':
+def union(fst1: 'FST', fst2: 'FST') -> 'FST':
     """Epsilon-free calculation of union of fst1 and fst2."""
-    mapping = {k:pyfoma_fst.State() for k in fst1.states | fst2.states}
-    newfst = pyfoma_fst.FST() # Get new initial state
+    mapping = {k:State() for k in fst1.states | fst2.states}
+    newfst = FST() # Get new initial state
     newfst.states = set(mapping.values()) | {newfst.initialstate}
     # Copy all transitions from old initial states to new initial state
     for lbl, t in itertools.chain(fst1.initialstate.all_transitions(), fst2.initialstate.all_transitions()):
@@ -741,25 +780,25 @@ def union(fst1: 'pyfoma_fst.FST', fst2: 'pyfoma_fst.FST') -> 'pyfoma_fst.FST':
     return newfst
 
 
-def intersection(fst1: 'pyfoma_fst.FST', fst2: 'pyfoma_fst.FST') -> 'pyfoma_fst.FST':
+def intersection(fst1: 'FST', fst2: 'FST') -> 'FST':
     """Intersection of self and other. Uses the product algorithm."""
     return product(fst1, fst2, finalf = all, oplus = operator.add, pathfollow = lambda x,y: x & y)
 
 
-def difference(fst1: 'pyfoma_fst.FST', fst2: 'pyfoma_fst.FST') -> 'pyfoma_fst.FST':
+def difference(fst1: 'FST', fst2: 'FST') -> 'FST':
     """Returns self-other. Uses the product algorithm."""
     return product(fst1, fst2, finalf = lambda x: x[0] and not x[1],\
                        oplus = lambda x,y: x, pathfollow = lambda x,y: x)
 
 
 @_harmonize_alphabet
-def product(fst1: 'pyfoma_fst.FST', fst2: 'pyfoma_fst.FST', finalf = any, oplus = min, pathfollow = lambda x,y: x|y) -> 'pyfoma_fst.FST':
+def product(fst1: 'FST', fst2: 'FST', finalf = any, oplus = min, pathfollow = lambda x,y: x|y) -> 'FST':
     """Generates the product FST from fst1, fst2. The helper functions by default
        produce fst1|fst2."""
-    newfst = pyfoma_fst.FST()
+    newfst = FST()
     Q = deque([(fst1.initialstate, fst2.initialstate)])
     S = {(fst1.initialstate, fst2.initialstate): newfst.initialstate}
-    dead1, dead2 = pyfoma_fst.State(finalweight = float("inf")), pyfoma_fst.State(finalweight = float("inf"))
+    dead1, dead2 = State(finalweight = float("inf")), State(finalweight = float("inf"))
     while Q:
         t1s, t2s = Q.pop()
         currentstate = S[(t1s, t2s)]
@@ -769,12 +808,59 @@ def product(fst1: 'pyfoma_fst.FST', fst2: 'pyfoma_fst.FST', finalf = any, oplus 
             currentstate.finalweight = oplus(t1s.finalweight, t2s.finalweight)
         # Get all outgoing labels we want to follow
         for lbl in pathfollow(t1s.transitions.keys(), t2s.transitions.keys()):
-            for outtr in t1s.transitions.get(lbl, (pyfoma_fst.Transition(dead1, lbl, float('inf')), )):
-                for intr in t2s.transitions.get(lbl, (pyfoma_fst.Transition(dead2, lbl, float('inf')), )):
+            for outtr in t1s.transitions.get(lbl, (Transition(dead1, lbl, float('inf')), )):
+                for intr in t2s.transitions.get(lbl, (Transition(dead2, lbl, float('inf')), )):
                     if (outtr.targetstate, intr.targetstate) not in S:
                         Q.append((outtr.targetstate, intr.targetstate))
-                        S[(outtr.targetstate, intr.targetstate)] = pyfoma_fst.State()
+                        S[(outtr.targetstate, intr.targetstate)] = State()
                         newfst.states.add(S[(outtr.targetstate, intr.targetstate)])
                     currentstate.add_transition(S[(outtr.targetstate, intr.targetstate)], lbl, oplus(outtr.weight, intr.weight))
     return newfst
 # endregion
+
+
+# Defines a list of functions that should be added as instance methods to the FST class dynamically
+_algorithms_to_add: Dict[str, Callable] = {
+    'trim': trimmed,
+    'filter_accessible': filtered_accessible,
+    'filter_coaccessible': filtered_coaccessible,
+    'scc': scc,
+    'push_weights': pushed_weights,
+    'map_labels': mapped_labels,
+    'epsilon_remove': epsilon_removed,
+    'epsilon_closure': epsilon_closure,
+    'dijkstra': dijkstra,
+    'words': words,
+    'label_states_topology': labelled_states_topology,
+    'words_nbest': words_nbest,
+    'words_cheapest': words_cheapest,
+    'tokenize_against_alphabet': tokenize_against_alphabet,
+    'generate': generate,
+    'analyze': analyze,
+    'apply': apply,
+    'determinize_unweighted': determinized_unweighted,
+    'determinize_as_dfa': determinized_as_dfa,
+    'determinize': determinized,
+    'minimize_as_dfa': minimized_as_dfa,
+    'minimize': minimized,
+    'find_sourcestates': find_sourcestates,
+    'create_reverse_index': create_reverse_index,
+    'minimize_brz': minimized_brz,
+    'kleene_closure': kleene_closure,
+    'add_weight': added_weight,
+    'optional': optional,
+    'concatenate': concatenate,
+    'cross_product': cross_product,
+    'compose': compose,
+    'invert': inverted,
+    'ignore': ignore,
+    'rewrite': rewritten,
+    'context_restrict': context_restricted,
+    'project': projected,
+    'reverse': reversed,
+    'reverse_e': reversed_e,
+    'union': union,
+    'intersection': intersection,
+    'difference': difference,
+    'product': product
+}

@@ -4,6 +4,7 @@
 
 import heapq, operator, itertools, re as pyre, functools
 from collections import deque, defaultdict
+from typing import Callable, Dict, Any
 
 def re(*args, **kwargs):
     return FST.re(*args, **kwargs)
@@ -92,6 +93,7 @@ class FST:
         return myregex.compiled
 
     re = regex
+
 
     @classmethod
     def from_strings(cls, strings):
@@ -340,42 +342,6 @@ class FST:
 
         return newfst, q1q2
     # endregion
-
-    def generate(self, word, weights = False):
-        """Pass word through FST and return generator that yields all outputs."""
-        yield from self.apply(word, inverse = False, weights = weights)
-
-    def analyze(self, word, weights = False):
-        """Pass word through FST and return generator that yields all inputs."""
-        yield from self.apply(word, inverse = True, weights = weights)
-
-    def apply(self, word, inverse = False, weights = False):
-        """Pass word through FST and return generator that yields outputs.
-           if inverse == True, map from range to domain.
-           weights is by default False. To see the cost, set weights to True."""
-        IN, OUT = [-1, 0] if inverse else [0, -1] # Tuple positions for input, output
-        cntr = itertools.count()
-        w = self.tokenize_against_alphabet(word)
-        Q, output = [], []
-        heapq.heappush(Q, (0.0, 0, next(cntr), [], self.initialstate)) # (cost, -pos, output, state)
-        while Q:
-            cost, negpos, _, output, state = heapq.heappop(Q)
-            if state == None and -negpos == len(w):
-                if weights == False:
-                    yield ''.join(output)
-                else:
-                    yield (''.join(output), cost)
-            elif state != None:
-                if state in self.finalstates:
-                    heapq.heappush(Q, (cost + state.finalweight, negpos, next(cntr), output, None))
-                for lbl, t in state.all_transitions():
-                    if lbl[IN] == '':
-                        heapq.heappush(Q, (cost + t.weight, negpos, next(cntr), output + [lbl[OUT]], t.targetstate))
-                    elif -negpos < len(w):
-                        nextsym = w[-negpos] if w[-negpos] in self.alphabet else '.'
-                        appendedsym = w[-negpos] if nextsym == '.' else lbl[OUT]
-                        if nextsym == lbl[IN]:
-                            heapq.heappush(Q, (cost + t.weight, negpos - 1, next(cntr), output + [appendedsym], t.targetstate))
 
 
 class Transition:

@@ -3,10 +3,10 @@
 import re as pyre, functools
 
 import pyfoma.fst as fst
-import pyfoma.algorithms as alg
 
 
 class RegexParse:
+    import pyfoma.algorithms as alg
 
     shortops = {'|':'UNION', '-':'MINUS', '&':'INTERSECTION', '*':'STAR', '+':'PLUS',
                 '(':'LPAREN', ')':'RPAREN', '?':'OPTIONAL', ':':'CP', ':?': 'CPOPTIONAL',
@@ -15,7 +15,7 @@ class RegexParse:
                 'invert':lambda x: alg.inverted(x),
                 'minimize': lambda x: alg.minimized(x),
                 'determinize': lambda x: alg.determinized(x),
-                'ignore': lambda x,y: alg.ignore(x,y),
+                'ignore': alg.ignore,
                 'rewrite': lambda *args, **kwargs: alg.rewritten(*args, **kwargs),
                 'restrict': lambda *args, **kwargs: alg.context_restricted(*args, **kwargs),
                 'project': lambda *args, **kwargs: alg.projected(*args, dim = int(kwargs.get('dim', '-1'))),
@@ -78,6 +78,7 @@ class RegexParse:
     def compile(self) -> 'fst.FST':
         """Put it all together!
         'If you lie to the compiler, it will have its revenge.' — Henry Spencer."""
+        import pyfoma.algorithms as alg
 
         def _stackcheck(s):
             if not s:
@@ -138,9 +139,9 @@ class RegexParse:
                 _append(stack, alg.kleene_plus(_pop(stack)))
             elif op == 'COMPOSE':
                 arg2, arg1 = _pop(stack), _pop(stack)
-                _append(stack, alg.filtered_coaccessible(arg1.compose(arg2)))
+                _append(stack, alg.filtered_coaccessible(alg.compose(arg1, arg2)))
             elif op == 'OPTIONAL':
-                _peek(stack).optional()
+                _peek(stack).optional()  # FIXME
             elif op == 'RANGE':
                 rng = value.split(',')
                 lang: 'fst.FST' = _pop(stack)
