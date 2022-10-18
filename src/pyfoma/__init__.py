@@ -29,9 +29,9 @@ for mutating_name, original_func in _algorithms_to_add.items():
     create_in_place_func = original_signature.return_annotation == 'FST'
 
     if create_in_place_func:
-        new_func = lambda self, *args, **kwargs: self.become(original_func(self, *args, **kwargs))
+        new_func = (lambda orig_func: lambda self, *args, **kwargs: self.become(orig_func(self, *args, **kwargs)))(original_func)
     else:
-        new_func = lambda self, *args, **kwargs: original_func(self, *args, **kwargs)
+        new_func = (lambda orig_func: lambda self, *args, **kwargs: orig_func(self, *args, **kwargs))(original_func)
 
     new_func.__name__ = mutating_name
 
