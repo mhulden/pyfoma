@@ -27,7 +27,7 @@ def _harmonize_alphabet(func):
        are present in the other FST."""
     @functools.wraps(func)
     def wrapper_decorator(fst1: 'FST', fst2: 'FST', **kwargs):
-        for A, B in [(fst1, fst2), (fst1, fst2)]:
+        for A, B in [(fst1, fst2), (fst2, fst1)]:
             if '.' in A.alphabet and (A.alphabet - {'.'}) != (B.alphabet - {'.'}):
                 Aexpand = B.alphabet - A.alphabet - {'.', ''}
                 if A == fst2:
