@@ -60,12 +60,18 @@ list(myfst.generate("aaa", weights = True))
 
 <img src="./docs/images/quickstart3.png" width="758">
 
-* Access basic algorithms such as determinization, minimization, weight pushing, shortest path, etc.:
+* Access basic algorithms such as determinization, minimization, weight pushing, shortest path, etc. 
+Every algorithm has a *mutating* form and a *non-mutating* form.
 
 ```python
-fstp = myfst.push_weights()
-fstp.view()
-print(fstp)    # Also print in AT&T string format
+from pyfoma.algorithms import pushed_weights # Only needed for non-mutating alg
+
+fst = pushed_weights(fst) # Non-mutating
+# ===== OR =====
+fst.push_weights() # Mutating
+
+fst.view()
+print(fst)    # Also print in AT&T string format
 ```
 
 <img src="./docs/images/quickstart4.png" width="325">

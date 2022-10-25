@@ -1,5 +1,5 @@
 import unittest
-from pyfoma import FST
+from pyfoma.fst import FST
 
 class TestFST(unittest.TestCase):
 
