@@ -1,8 +1,8 @@
 import unittest
 from pyfoma.fst import FST
-import sys
-
-sys.path.append('./src')
+# import sys
+#
+# sys.path.append('../src')
 
 class TestFST(unittest.TestCase):
 
