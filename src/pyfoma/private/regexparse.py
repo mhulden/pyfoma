@@ -5,20 +5,30 @@ import re as pyre, functools
 from pyfoma.fst import FST
 import pyfoma.algorithms as alg
 
+
 class RegexParse:
     shortops = {'|': 'UNION', '-': 'MINUS', '&': 'INTERSECTION', '*': 'STAR', '+': 'PLUS',
                 '(': 'LPAREN', ')': 'RPAREN', '?': 'OPTIONAL', ':': 'CP', ':?': 'CPOPTIONAL',
                 '~': "COMPLEMENT", '@': "COMPOSE", ',': 'COMMA', '/': 'CONTEXT', '_': 'PAIRUP'}
-    builtins = {'reverse': lambda x: alg.reverse(x),
-                'invert': lambda x: alg.invert(x),
-                'minimize': lambda x: alg.minimize(x),
-                'determinize': lambda x: alg.determinize(x),
-                'ignore': lambda x, y: alg.ignore(x, y),
-                'rewrite': lambda *args, **kwargs: alg.rewrite(*args, **kwargs),
-                'restrict': lambda *args, **kwargs: alg.context_restrict(*args, **kwargs),
-                'project': lambda *args, **kwargs: alg.project(*args, dim=int(kwargs.get('dim', '-1'))),
-                'input': lambda x: alg.project(x, dim=0),
-                'output': lambda x: alg.project(x, dim=-1)}
+
+    # Used to set names so that these functions have useful error messages
+    _builtins_project_lambda = lambda *args, **kwargs: alg.projected(*args, dim=int(kwargs.get('dim', '-1')))
+    _builtins_project_lambda.__name__ = "project"
+    _builtins_input_lambda = lambda x: alg.projected(x, dim=0)
+    _builtins_input_lambda.__name__ = "input"
+    _builtins_output_lambda = lambda x: alg.projected(x, dim=-1)
+    _builtins_output_lambda.__name__ = "output"
+
+    builtins = {'reverse': alg.reversed,
+                'invert': alg.inverted,
+                'minimize': alg.minimized,
+                'determinize': alg.determinized,
+                'ignore': alg.ignore,
+                'rewrite': alg.rewritten,
+                'restrict': alg.context_restricted,
+                'project': _builtins_project_lambda,
+                'input': _builtins_input_lambda,
+                'output': _builtins_output_lambda}
     precedence = {"FUNC": 11, "COMMA": 1, "PARAM": 1, "COMPOSE": 3, "UNION": 5, "INTERSECTION": 5,
                   "MINUS": 5, "CONCAT": 6, "STAR": 9, "PLUS": 9, "OPTIONAL": 9, "WEIGHT": 9,
                   "CP": 10, "CPOPTIONAL": 10, "RANGE": 9, "CONTEXT": 1, "PAIRUP": 2}

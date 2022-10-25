@@ -341,6 +341,66 @@ class FST:
             q1q2[s].finalweight = s.finalweight
 
         return newfst, q1q2
+
+    def generate(self: 'FST', word, weights=False):
+        """Pass word through FST and return generator that yields all outputs."""
+        yield from self.apply(word, inverse=False, weights=weights)
+
+    def analyze(self: 'FST', word, weights=False):
+        """Pass word through FST and return generator that yields all inputs."""
+        yield from self.apply(word, inverse=True, weights=weights)
+
+    def apply(self: 'FST', word, inverse=False, weights=False):
+        """Pass word through FST and return generator that yields outputs.
+           if inverse == True, map from range to domain.
+           weights is by default False. To see the cost, set weights to True."""
+        IN, OUT = [-1, 0] if inverse else [0, -1]  # Tuple positions for input, output
+        cntr = itertools.count()
+        w = self.tokenize_against_alphabet(word)
+        Q, output = [], []
+        heapq.heappush(Q, (0.0, 0, next(cntr), [], self.initialstate))  # (cost, -pos, output, state)
+        while Q:
+            cost, negpos, _, output, state = heapq.heappop(Q)
+            if state == None and -negpos == len(w):
+                if weights == False:
+                    yield ''.join(output)
+                else:
+                    yield (''.join(output), cost)
+            elif state != None:
+                if state in self.finalstates:
+                    heapq.heappush(Q, (cost + state.finalweight, negpos, next(cntr), output, None))
+                for lbl, t in state.all_transitions():
+                    if lbl[IN] == '':
+                        heapq.heappush(Q, (cost + t.weight, negpos, next(cntr), output + [lbl[OUT]], t.targetstate))
+                    elif -negpos < len(w):
+                        nextsym = w[-negpos] if w[-negpos] in self.alphabet else '.'
+                        appendedsym = w[-negpos] if nextsym == '.' else lbl[OUT]
+                        if nextsym == lbl[IN]:
+                            heapq.heappush(Q, (
+                            cost + t.weight, negpos - 1, next(cntr), output + [appendedsym], t.targetstate))
+
+    def words(self: 'FST'):
+        """A generator to yield all words. Yay BFS!"""
+        Q = deque([(self.initialstate, 0.0, [])])
+        while Q:
+            s, cost, seq = Q.popleft()
+            if s in self.finalstates:
+                yield cost + s.finalweight, seq
+            for label, t in s.all_transitions():
+                Q.append((t.targetstate, cost + t.weight, seq + [label]))
+
+    def tokenize_against_alphabet(self: 'FST', word) -> list:
+        """Tokenize a string using the alphabet of the automaton."""
+        tokens = []
+        start = 0
+        while start < len(word):
+            t = word[start]  # Default is length 1 token unless we find a longer one
+            for length in range(1, len(word) - start + 1):  # TODO: limit to max length
+                if word[start:start + length] in self.alphabet:  # of syms in alphabet
+                    t = word[start:start + length]
+            tokens.append(t)
+            start += len(t)
+        return tokens
     # endregion
 
 

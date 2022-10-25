@@ -14,8 +14,8 @@ def _copy_param(func):
     """Automatically uses a copy of the FST parameter instead of the original value, in order to avoid mutating the
     object. Use on any method that returns a modified version of an FST."""
     @functools.wraps(func)
-    def wrapper_decorator(fst: 'FST', **kwargs):
-        return func(fst.__copy__(), **kwargs)
+    def wrapper_decorator(fst: 'FST', *args, **kwargs):
+        return func(fst.__copy__(), *args, **kwargs)
 
     return wrapper_decorator
 
@@ -245,17 +245,6 @@ def dijkstra(fst: 'FST', state) -> float:
     return float("inf")
 
 
-def words(fst: 'FST'):
-    """A generator to yield all words. Yay BFS!"""
-    Q = deque([(fst.initialstate, 0.0, [])])
-    while Q:
-        s, cost, seq = Q.popleft()
-        if s in fst.finalstates:
-            yield cost + s.finalweight, seq
-        for label, t in s.all_transitions():
-            Q.append((t.targetstate, cost + t.weight, seq + [label]))
-
-
 @_copy_param
 def labelled_states_topology(fst: 'FST', mode = 'BFS') -> 'FST':
     """Returns a modified FST, topologically sorting and labelling states with numbers.
@@ -293,60 +282,6 @@ def words_cheapest(fst: 'FST'):
                 heapq.heappush(Q, (cost + s.finalweight, next(cntr), None, seq))
             for label, t in s.all_transitions():
                 heapq.heappush(Q, (cost + t.weight, next(cntr), t.targetstate, seq + [label]))
-
-
-def tokenize_against_alphabet(fst: 'FST', word) -> list:
-    """Tokenize a string using the alphabet of the automaton."""
-    tokens = []
-    start = 0
-    while start < len(word):
-        t = word[start] # Default is length 1 token unless we find a longer one
-        for length in range(1, len(word) - start + 1):    # TODO: limit to max length
-            if word[start:start+length] in fst.alphabet: # of syms in alphabet
-                t = word[start:start+length]
-        tokens.append(t)
-        start += len(t)
-    return tokens
-
-
-def generate(fst: 'FST', word, weights = False):
-    """Pass word through FST and return generator that yields all outputs."""
-    yield from apply(fst, word, inverse = False, weights = weights)
-
-
-def analyze(fst: 'FST', word, weights = False):
-    """Pass word through FST and return generator that yields all inputs."""
-    yield from apply(fst, word, inverse = True, weights = weights)
-
-
-def apply(fst: 'FST', word, inverse = False, weights = False):
-    """Pass word through FST and return generator that yields outputs.
-       if inverse == True, map from range to domain.
-       weights is by default False. To see the cost, set weights to True."""
-    IN, OUT = [-1, 0] if inverse else [0, -1] # Tuple positions for input, output
-    cntr = itertools.count()
-    w = tokenize_against_alphabet(fst, word)
-    Q, output = [], []
-    heapq.heappush(Q, (0.0, 0, next(cntr), [], fst.initialstate)) # (cost, -pos, output, state)
-    while Q:
-        cost, negpos, _, output, state = heapq.heappop(Q)
-        if state == None and -negpos == len(w):
-            if weights == False:
-                yield ''.join(output)
-            else:
-                yield (''.join(output), cost)
-        elif state != None:
-            if state in fst.finalstates:
-                heapq.heappush(Q, (cost + state.finalweight, negpos, next(cntr), output, None))
-            for lbl, t in state.all_transitions():
-                if lbl[IN] == '':
-                    heapq.heappush(Q, (cost + t.weight, negpos, next(cntr), output + [lbl[OUT]], t.targetstate))
-                elif -negpos < len(w):
-                    nextsym = w[-negpos] if w[-negpos] in fst.alphabet else '.'
-                    appendedsym = w[-negpos] if nextsym == '.' else lbl[OUT]
-                    if nextsym == lbl[IN]:
-                        heapq.heappush(Q, (cost + t.weight, negpos - 1, next(cntr), output + [appendedsym], t.targetstate))
-
 
 
 @_copy_param
@@ -429,10 +364,10 @@ def minimized(fst: 'FST') -> 'FST':
     if len(equivalenceclasses) == len(fst.states):
         return fst # we were already minimal, no need to reconstruct
 
-    return _merged_statesets(fst, equivalenceclasses)
+    return merging_equivalent_states(fst, equivalenceclasses)
 
 
-def _merged_statesets(fst: 'FST', equivalenceclasses: set) -> 'FST':
+def merging_equivalent_states(fst: 'FST', equivalenceclasses: set) -> 'FST':
     """Merge equivalent states given as a set of sets."""
     eqmap = {s[i]:s[0] for s in equivalenceclasses for i in range(len(s))}
     representerstates = set(eqmap.values())
@@ -832,19 +767,15 @@ _algorithms_to_add: Dict[str, Callable] = {
     'epsilon_remove': epsilon_removed,
     'epsilon_closure': epsilon_closure,
     'dijkstra': dijkstra,
-    'words': words,
     'label_states_topology': labelled_states_topology,
     'words_nbest': words_nbest,
     'words_cheapest': words_cheapest,
-    'tokenize_against_alphabet': tokenize_against_alphabet,
-    'generate': generate,
-    'analyze': analyze,
-    'apply': apply,
     'determinize_unweighted': determinized_unweighted,
     'determinize_as_dfa': determinized_as_dfa,
     'determinize': determinized,
     'minimize_as_dfa': minimized_as_dfa,
     'minimize': minimized,
+    'merge_equivalent_states': merging_equivalent_states,
     'find_sourcestates': find_sourcestates,
     'create_reverse_index': create_reverse_index,
     'minimize_brz': minimized_brz,
