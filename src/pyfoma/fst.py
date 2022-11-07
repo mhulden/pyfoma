@@ -281,7 +281,7 @@ class FST:
                 else:
                     targetlabel = str(statenums[id(target)])
                 g.edge(sourcelabel, targetlabel, label=graphviz.nohtml(printlabel))
-        display(graphviz.Source(g))
+        return g
 
     def all_transitions(self, states):
         """Enumerate all transitions (state, label, Transition) for an iterable of states."""
