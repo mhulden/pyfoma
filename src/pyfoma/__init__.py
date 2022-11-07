@@ -16,6 +16,8 @@ __email__      = "mans.hulden@gmail.com"
 __status__     = "Prototype"
 
 
+# This project is (partially) documented using the Sphinx docstring convention
+
 # Dynamically add the algorithms contained in `algorithms.py` to the FST as instance methods
 # Is this hacky? Yes, but it means we can keep our algorithm logic in the `algorithms` module,
 # while still being able to call useful methods like `determinize` on the actual FST instances

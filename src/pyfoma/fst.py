@@ -220,15 +220,17 @@ class FST:
             self.alphabet &= seen
         return self
 
-    def view(self, raw=False, show_weights=False, show_alphabet=True):
-        """Graphviz viewing and display in Jupyter.
-           Keyword arguments:
-           raw -- if True, show label tuples and weights unformatted
-           show_weights -- force display of weights even if 0.0
-           show_alphabet -- displays the alphabet below the FST
+    def view(self, raw=False, show_weights=False, show_alphabet=True) -> 'graphviz.Digraph':
+        """Creates a 'graphviz.Digraph' object to view the FST. Will automatically display the FST in Jupyter.
+
+            :param raw: if True, show label tuples and weights unformatted
+            :param show_weights: force display of weights even if 0.0
+            :param show_alphabet: displays the alphabet below the FST
+            :return: A Digraph object which will automatically display in Jupyter.
+
+           If you would like to display the FST from a non-Jupyter environment, please use :code:`FST.render`
         """
         import graphviz
-        from IPython.display import display
         def _float_format(num):
             if not show_weights:
                 return ""
@@ -281,7 +283,17 @@ class FST:
                 else:
                     targetlabel = str(statenums[id(target)])
                 g.edge(sourcelabel, targetlabel, label=graphviz.nohtml(printlabel))
-        display(graphviz.Source(g))
+        return g
+
+    def render(self, view=True, filename: str='FST', format='pdf'):
+        """
+        Renders the FST to a file and optionally opens the file.
+        :param view: If True, the rendered file will be opened.
+        :param format: The file format for the Digraph. Typically 'pdf', 'png', or 'svg'. View all formats: https://graphviz.org/docs/outputs/
+        """
+        digraph = self.view()
+        digraph.format = format
+        digraph.render(view=view, filename=filename, cleanup=True)
 
     def all_transitions(self, states):
         """Enumerate all transitions (state, label, Transition) for an iterable of states."""
