@@ -1,0 +1,17 @@
+name: Build and Upload Conda Package
+
+jobs:
+  deploy:
+    runs-on: macos-latest
+
+    steps:
+      - name: Setup Miniconda
+        uses: conda-incubator/setup-miniconda@v2.1.1
+      - name: Install conda-build
+        run: conda install conda-build
+      - name: Create spooky skeleton
+        run: conda skeleton pypi pyfoma
+      - name: Build the recipe
+        run: conda-build pyfoma
+      - 
+
