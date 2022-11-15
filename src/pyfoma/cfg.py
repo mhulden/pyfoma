@@ -25,7 +25,8 @@ def draw_tree(string: str):
         current_children = []  # The children ids of the current parent
         current_node = None  # A new node that is being read in
 
-        with graph.subgraph(name="" + str(initial_index), graph_attr={}) as subgraph:
+        with graph.subgraph(name="cluster_" + str(initial_index),
+                            graph_attr={'peripheries': '0', 'margin': '2'}) as subgraph:
 
             while index < len(string):
                 char = string[index]
@@ -51,8 +52,9 @@ def draw_tree(string: str):
                         # because any other end symbols should have already been parsed.
                         if START_END_SYMBOLS[start_marker] != char:
                             # Parenthesis mismatch
-                            raise Exception(
-                                f"Parenthesis mismatch. A matching parenthesis {START_END_SYMBOLS[start_marker]} must be provided for the parenthesis at position {initial_index}")
+                            raise SyntaxError(
+                                f"Parenthesis mismatch. A matching parenthesis {START_END_SYMBOLS[start_marker]} must be provided for the parenthesis at position {initial_index}",
+                                ("", 1, index, string))
 
                         # Add edges for all the daughters
                         for child in current_children:
@@ -79,9 +81,10 @@ def draw_tree(string: str):
 
             if start_marker:
                 # If we got this far and never saw an end marker, we're missing parenthesis
-                raise Exception(
-                    f"Parenthesis mismatch. A matching parenthesis {START_END_SYMBOLS[start_marker]} must be provided for the parenthesis at position {initial_index}")
+                raise SyntaxError(
+                    f"Parenthesis mismatch. A matching parenthesis {START_END_SYMBOLS[start_marker]} must be provided for the parenthesis at position {initial_index}",
+                    ("", 1, index, string))
 
     parse_string(graph)
-    graph.attr(ranksep='0.2')
+    graph.attr(ranksep='0.3', splines='false')
     return graph
