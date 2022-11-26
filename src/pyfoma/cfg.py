@@ -5,8 +5,13 @@
 import graphviz
 
 
-def draw_tree(string: str):
-    """Draws a CFG string as a tree with graphviz."""
+def draw_cfg(string: str, style='tree'):
+    """
+    Draws a CFG string as a tree with graphviz.
+    :param string: The CFG string to render
+    :param style: The style to render the CFG in. Choose from 'tree', 'boxes'.
+    :return: A `graphviz.Graph` object.
+    """
 
     START_END_SYMBOLS = {"(": ")", "[": "]"}
 
@@ -16,7 +21,7 @@ def draw_tree(string: str):
     def parse_string(graph, initial_index=0, start_marker=None) -> (int, str):
         """
         Parses the string starting at index, until a close parenthesis or the end of the string is found
-        :param index: The index in the string to start at
+        :param initial_index: The index in the string to start at
         :param start_marker: If provided, defines the type of marker that the group uses to mark the start. Must be either ( or [
         :return: (new_index, subroot) where new_index is the next un-parsed index, and `node` is the root of the subtree
         """
@@ -25,8 +30,11 @@ def draw_tree(string: str):
         current_children = []  # The children ids of the current parent
         current_node = None  # A new node that is being read in
 
-        with graph.subgraph(name="cluster_" + str(initial_index),
-                            graph_attr={'peripheries': '0', 'margin': '2'}) as subgraph:
+        use_clusters = style == 'boxes'
+        hide_box_attrs = {'peripheries': '0', 'margin': '2'}
+
+        with graph.subgraph(name=("cluster_" if use_clusters else "") + str(initial_index),
+                            graph_attr=hide_box_attrs if style == 'tree' else {}) as subgraph:
 
             while index < len(string):
                 char = string[index]
@@ -87,4 +95,6 @@ def draw_tree(string: str):
 
     parse_string(graph)
     graph.attr(ranksep='0.3', splines='false')
+    if style == 'boxes':
+        graph.edge_attr['style'] = 'invis'
     return graph
