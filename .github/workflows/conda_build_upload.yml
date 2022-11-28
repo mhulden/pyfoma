@@ -1,0 +1,41 @@
+name: Build and Upload Conda Package
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: macos-latest
+
+    defaults:
+      run:
+        shell: bash -l {0}
+
+    steps:
+      - name: Install Python 3
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.6
+      - name: Setup Miniconda
+        uses: conda-incubator/setup-miniconda@v2.1.1
+        with:
+          use-only-tar-bz2: true
+          auto-update-conda: true
+          auto-activate-base: true
+      - name: Install conda-build
+        run: conda install conda-build
+      - name: Install Anaconda CLI
+        run: conda install anaconda-client
+      - name: Create spooky skeleton
+        run: conda skeleton pypi pyfoma
+      - name: Build the recipe and pipe the output to a github variable
+        run: conda-build pyfoma --output-folder output
+      - name: Upload to conda
+        run: anaconda --token ${{ secrets.PYFOMA_CONDA }} upload $(find build -name "*.tar.bz2")
+          
+
