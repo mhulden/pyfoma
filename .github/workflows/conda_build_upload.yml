@@ -12,6 +12,10 @@ jobs:
   deploy:
     runs-on: macos-latest
 
+    defaults:
+      run:
+        shell: bash -l {0}
+
     steps:
       - name: Install Python 3
         uses: actions/setup-python@v4
@@ -19,6 +23,10 @@ jobs:
           python-version: 3.6
       - name: Setup Miniconda
         uses: conda-incubator/setup-miniconda@v2.1.1
+        with:
+          use-only-tar-bz2: true 
+          auto-update-conda: true
+          auto-activate-base: true
       - name: Install conda-build
         run: conda install conda-build
       - name: Install Anaconda CLI
