@@ -24,7 +24,7 @@ jobs:
       - name: Setup Miniconda
         uses: conda-incubator/setup-miniconda@v2.1.1
         with:
-          use-only-tar-bz2: true 
+          use-only-tar-bz2: true
           auto-update-conda: true
           auto-activate-base: true
       - name: Install conda-build
@@ -34,7 +34,7 @@ jobs:
       - name: Create spooky skeleton
         run: conda skeleton pypi pyfoma
       - name: Build the recipe and pipe the output to a github variable
-        run: echo "BUILD_OUT=$(conda-build pyfoma)"
+        run: echo "BUILD_OUT=$(conda-build pyfoma)" >> $GITHUB_ENV
       - name: Find the build file from the output and pipe to a github variable
         run: |
           regex="anaconda upload \\\s*([\/\w\s\-\.]*.bz2)"
