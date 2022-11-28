@@ -5,13 +5,26 @@ jobs:
     runs-on: macos-latest
 
     steps:
+      - name: Install Python 3
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.6
       - name: Setup Miniconda
         uses: conda-incubator/setup-miniconda@v2.1.1
       - name: Install conda-build
         run: conda install conda-build
       - name: Create spooky skeleton
         run: conda skeleton pypi pyfoma
-      - name: Build the recipe
-        run: conda-build pyfoma
-      - 
+      - name: Build the recipe and pipe the output to a github variable
+        run: echo "BUILD_OUT=$(conda-build pyfoma)" >> $GITHUB_ENV
+      - name: Find the build file from the output and pipe to a github variable
+        run: |
+          regex="anaconda upload \\\s*([\/\w\s\-\.]*.bz2)"
+          if [[ "${{ env.BUILD_OUT }}$" =~ $regex ]]
+          then
+            echo "BUILD_FILE=${BASH_REMATCH[1]}"
+          fi
+      - name: Upload to conda
+        run: anaconda --token ${{ secrets.CONDA_TOKEN }} upload ${{ env.BUILD_FILE }}
+          
 
