@@ -26,13 +26,15 @@ jobs:
       - name: Create spooky skeleton
         run: conda skeleton pypi pyfoma
       - name: Build the recipe and pipe the output to a github variable
-        run: echo "BUILD_OUT=$(conda-build pyfoma)" >> $GITHUB_ENV
+        run: echo "BUILD_OUT=$(conda-build pyfoma)"
       - name: Find the build file from the output and pipe to a github variable
         run: |
           regex="anaconda upload \\\s*([\/\w\s\-\.]*.bz2)"
           if [[ "${{ env.BUILD_OUT }}$" =~ $regex ]]
           then
             echo "BUILD_FILE=${BASH_REMATCH[1]}"
+          else
+            exit 1
           fi
       - name: Upload to conda
         run: anaconda --token ${{ secrets.CONDA_TOKEN }} upload ${{ env.BUILD_FILE }}
