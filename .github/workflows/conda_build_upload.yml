@@ -1,12 +1,10 @@
 name: Build and Upload Conda Package
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
+  workflow_run:
+    workflows: ["Release PyPi Package"]
+    types:
+      - completed
 
 jobs:
   deploy:
@@ -33,9 +31,9 @@ jobs:
         run: conda install anaconda-client
       - name: Create spooky skeleton
         run: conda skeleton pypi pyfoma
-      - name: Build the recipe and pipe the output to a github variable
-        run: conda-build pyfoma --output-folder output
+      - name: Add noarch to the package
+        run: 'sed -i "" "s/build:/build:\n  noarch: python/" pyfoma/meta.yaml'
+      - name: Build the package from the skeleton
+        run: conda-build pyfoma --output-folder build
       - name: Upload to conda
         run: anaconda --token ${{ secrets.PYFOMA_CONDA }} upload $(find build -name "*.tar.bz2")
-          
-
