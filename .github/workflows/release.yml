@@ -1,4 +1,4 @@
-name: Build and Upload Python Package
+name: Release PyPi Package
 
 on:
   release:
