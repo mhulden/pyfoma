@@ -40,4 +40,3 @@ jobs:
       - name: Upload to conda
         run: anaconda --token ${{ secrets.PYFOMA_CONDA }} upload $(find build -name "*.tar.bz2")
           
-
