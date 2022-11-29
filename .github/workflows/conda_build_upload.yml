@@ -34,7 +34,7 @@ jobs:
       - name: Create spooky skeleton
         run: conda skeleton pypi pyfoma
       - name: Add noarch to the package
-        run: 'sed -i "" "s/build:/build:\n  noarch: python/" meta.yaml'
+        run: 'sed -i "" "s/build:/build:\n  noarch: python/" pyfoma/meta.yaml'
       - name: Build the package from the skeleton
         run: conda-build pyfoma --output-folder build
       - name: Upload to conda
