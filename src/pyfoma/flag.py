@@ -7,14 +7,14 @@ class FlagOp:
         :param sym: String representation of flag diacritic 
 
         The parameter 'sym' should follow the format [[XYZ]], for
-        example "[[$var=val]]", where:
+        example "[[$Num=Sg]]", where:
 
         1. X is a variable name matching the regex "[$]\w+" 
         2. Y is one of the operators "=" (set value), "==" (check that
         value equals), "!=" (check that value does not equal) or "$="
         (unify to value) 
-        3. Z is a value matching the regex "[$]\w+". If the value
-        starts with $, then it refers to another variable.
+        3. Z is a value matching the regex "[$]?\w+". If the value
+        starts with $, then it refers to a variable.
         """
 
         match = re.match(r"\[\[(\$\w+)([?!=]?=)(\$?\w+|{})\]\]",sym)
@@ -111,8 +111,6 @@ class FlagStreamFilter(FlagFilter):
         :param alphabet: A symbol set (containing strings)
         """
         super().__init__(alphabet)
-        self.config = None
-        self.has_failed = False
         self.reset()
 
     def reset(self):
