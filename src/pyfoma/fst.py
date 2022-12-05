@@ -5,6 +5,7 @@
 import heapq, operator, itertools, re as pyre, functools
 from collections import deque, defaultdict
 from typing import Callable, Dict, Any
+from pyfoma.flag import FlagStringFilter, FlagOp
 
 def re(*args, **kwargs):
     return FST.re(*args, **kwargs)
@@ -354,26 +355,31 @@ class FST:
 
         return newfst, q1q2
 
-    def generate(self: 'FST', word, weights=False):
+    def generate(self: 'FST', word, weights=False, obey_flags=False):
         """Pass word through FST and return generator that yields all outputs."""
-        yield from self.apply(word, inverse=False, weights=weights)
+        yield from self.apply(word, inverse=False, weights=weights, obey_flags=obey_flags)
 
-    def analyze(self: 'FST', word, weights=False):
+    def analyze(self: 'FST', word, weights=False, obey_flags=False):
         """Pass word through FST and return generator that yields all inputs."""
-        yield from self.apply(word, inverse=True, weights=weights)
+        yield from self.apply(word, inverse=True, weights=weights, obey_flags=obey_flags)
 
-    def apply(self: 'FST', word, inverse=False, weights=False):
+    def apply(self: 'FST', word, inverse=False, weights=False, obey_flags=True):
         """Pass word through FST and return generator that yields outputs.
            if inverse == True, map from range to domain.
-           weights is by default False. To see the cost, set weights to True."""
+           weights is by default False. To see the cost, set weights to True.
+           obey_flags toggles whether invalid flag diacritic
+           combinations are filtered out. By default, flags are
+           treated as epsilons in the input."""
         IN, OUT = [-1, 0] if inverse else [0, -1]  # Tuple positions for input, output
         cntr = itertools.count()
         w = self.tokenize_against_alphabet(word)
         Q, output = [], []
         heapq.heappush(Q, (0.0, 0, next(cntr), [], self.initialstate))  # (cost, -pos, output, state)
+        flag_filter = FlagStringFilter(self.alphabet) if obey_flags else None
+        
         while Q:
             cost, negpos, _, output, state = heapq.heappop(Q)
-            if state == None and -negpos == len(w):
+            if state == None and -negpos == len(w) and (not obey_flags or flag_filter(output)):
                 if weights == False:
                     yield ''.join(output)
                 else:
@@ -382,7 +388,7 @@ class FST:
                 if state in self.finalstates:
                     heapq.heappush(Q, (cost + state.finalweight, negpos, next(cntr), output, None))
                 for lbl, t in state.all_transitions():
-                    if lbl[IN] == '':
+                    if lbl[IN] == '' or FlagOp.is_flag(lbl[IN]):
                         heapq.heappush(Q, (cost + t.weight, negpos, next(cntr), output + [lbl[OUT]], t.targetstate))
                     elif -negpos < len(w):
                         nextsym = w[-negpos] if w[-negpos] in self.alphabet else '.'
