@@ -4,6 +4,9 @@ from typing import Dict, Set, Sequence
 # Empty variable value.
 EMPTY="{}"
 
+# Defines a valid flag diacritic
+FLAGRE=r"\[\[(\$\w+)([?!=]?=)(\$?\w+|{})\]\]"
+
 class FlagOp:
     def __init__(self, sym: str):
         """Creates a Flag diacritic
@@ -19,9 +22,13 @@ class FlagOp:
         (unify to value) 
         3. Z is a value matching the regex "[$]?\w+". If the value
         starts with $, then it refers to a variable.
+
+        More formally, any flag diacritic needs to match the
+        expression flag.FLAGRE.
+
         """
 
-        match = re.match(r"\[\[(\$\w+)([?!=]?=)(\$?\w+|{})\]\]",sym)
+        match = re.match(FLAGRE,sym)
         self.var, self.op, self.val = match.group(1,2,3)
         self.eq_flag = (self.val[0] == "$")
         self.op_func = {"=":self.setv,
@@ -39,7 +46,7 @@ class FlagOp:
         otherwise.
 
         """
-        return re.match(r"\[\[\$\w+[?!=]?=(\$?\w+|{})\]\]",sym) != None
+        return re.match(FLAGRE,sym) != None
     
     def setv(self, config: Dict[str, str], val: str) -> bool:
         """ The operator "=" """
@@ -114,9 +121,8 @@ class FlagStreamFilter(FlagFilter):
         """
         if not sym in self.alphabet:
             raise KeyError(sym)
-        if sym in self.flags:
-            if not self.flags[sym](self.config):
-                self.has_failed = True
+        if sym in self.flags and not self.flags[sym](self.config):
+            self.has_failed = True
         return not self.has_failed
 
 # FlagStringFilter could be implemented on top of FlagStreamFilter but
