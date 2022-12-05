@@ -73,6 +73,8 @@ class FlagOp:
         specified by this flag (when the operator is "=" or "?=").
         """
         val = config[self.val] if self.eq_flag else self.val
+        # TODO: Implementing this as a separate function call can be
+        # slow. If it becomes an issue, then optimize.
         return self.op_func(config, val)        
         
 class FlagFilter:
