@@ -1,7 +1,8 @@
 import re
+from typing import Dict, Set, Sequence
 
 class FlagOp:
-    def __init__(self, sym):
+    def __init__(self, sym: str):
         """Creates a Flag diacritic
 
         :param sym: String representation of flag diacritic 
@@ -26,37 +27,38 @@ class FlagOp:
                         "?=":self.unify}[self.op]
 
     @staticmethod
-    def is_flag(sym):
+    def is_flag(sym: str) -> bool:
         """Check that 'sym' matches the format required by FlagOp.__init__
 
         :param sym: A string
 
-        :return: True is 'sym' satisfies the requirement for
-        FlagOp.__init__. False, otherwise.
+        :return: True is 'sym' is a valig flag diacritic. False,
+        otherwise.
+
         """
         return re.match(r"\[\[\$\w+[?!=]?=(\$?\w+|{})\]\]",sym) != None
     
-    def setv(self, config, val):
+    def setv(self, config: Dict[str, str], val: str) -> bool:
         """ The operator "=" """
         config[self.var] = val
         return True
 
-    def check(self, config, val):
+    def check(self, config: Dict[str, str], val: str) -> bool:
         """ The operator "==" """
         return config[self.var] == val
 
-    def neg_check(self, config, val):
+    def neg_check(self, config: Dict[str, str], val: str) -> bool:
         """ The operator "!=" """
         return config[self.var] != val
 
-    def unify(self, config, val):
+    def unify(self, config: Dict[str, str], val: str) -> bool:
         """ The operator "?=" """
         if config[self.var] in ["{}", val]:
             config[self.var] = val
             return True
         return False
 
-    def __call__(self, config):
+    def __call__(self, config: Dict[str, str]) -> bool:
         """Perform test/operation specified by this flag 
 
         :param config: A dictionary of variable:value pairs
@@ -71,7 +73,7 @@ class FlagOp:
         return self.op_func(config, val)        
         
 class FlagFilter:
-    def __init__(self, alphabet):
+    def __init__(self, alphabet: Set[str]):
         """ Create FlagFilter from an FST alphabet
         
         :param alphabet: A symbol set (containing strings)
@@ -84,7 +86,7 @@ class FlagFilter:
         self.vars = {flag.var for flag in self.flags.values()}
         
 class FlagStringFilter(FlagFilter):
-    def __call__(self, seq):
+    def __call__(self, seq: Sequence[str]) -> bool:
         """Check that flag diacritic configuration is valid
 
         :param seq: A list of string symbols in self.alphabet
@@ -105,7 +107,7 @@ class FlagStringFilter(FlagFilter):
         return True
 
 class FlagStreamFilter(FlagFilter):
-    def __init__(self, alphabet):
+    def __init__(self, alphabet: Set[str]):
         """ Create FlagStreamFilter from an FST alphabet
         
         :param alphabet: A symbol set (containing strings)
@@ -118,7 +120,7 @@ class FlagStreamFilter(FlagFilter):
         self.config = {var:"{}" for var in self.vars}
         self.has_failed = False
         
-    def check(self, sym):
+    def check(self, sym: str) -> bool:
         """Read next symbol and check fla diacritic configuration
 
         :param sym: A symbol in self.alphabet
