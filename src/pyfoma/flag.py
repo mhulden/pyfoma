@@ -90,7 +90,7 @@ class FlagFilter:
         
         :param alphabet: A symbol set (containing strings)
         """ 
-        self.alphabet = {sym for sym in self.alphabet}
+        self.alphabet = {sym for sym in alphabet}
         self.flags = {sym:FlagOp(sym) for sym in alphabet
                       if FlagOp.is_flag(sym)}
         self.vars = {flag.var for flag in self.flags.values()}
@@ -119,7 +119,7 @@ class FlagStreamFilter(FlagFilter):
 
         Raises KeyError when 'sym' is missing from the FST alphabet.
         """
-        if not sym in self.alphabet:
+        if sym != "" and not sym in self.alphabet:
             raise KeyError(sym)
         if sym in self.flags and not self.flags[sym](self.config):
             self.has_failed = True
@@ -142,7 +142,7 @@ class FlagStringFilter(FlagFilter):
         """
         config = {var:EMPTY for var in self.vars}
         for sym in seq:
-            if not sym in self.alphabet:
+            if sym != "" and not sym in self.alphabet:
                 raise KeyError(sym)
             if sym in self.flags and not self.flags[sym](config):
                 return False
