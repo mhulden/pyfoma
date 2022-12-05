@@ -1,6 +1,9 @@
 import re
 from typing import Dict, Set, Sequence
 
+# Empty variable value.
+EMPTY="{}"
+
 class FlagOp:
     def __init__(self, sym: str):
         """Creates a Flag diacritic
@@ -53,7 +56,7 @@ class FlagOp:
 
     def unify(self, config: Dict[str, str], val: str) -> bool:
         """ The operator "?=" """
-        if config[self.var] in ["{}", val]:
+        if config[self.var] in [EMPTY, val]:
             config[self.var] = val
             return True
         return False
@@ -78,34 +81,11 @@ class FlagFilter:
         
         :param alphabet: A symbol set (containing strings)
         """ 
-        self.flags = {}
         self.alphabet = alphabet
-        for sym in alphabet:
-            if FlagOp.is_flag(sym):
-                self.flags[sym] = FlagOp(sym)
+        self.flags = {sym:FlagOp(sym) for sym in alphabet
+                      if FlagOp.is_flag(sym)}
         self.vars = {flag.var for flag in self.flags.values()}
         
-class FlagStringFilter(FlagFilter):
-    def __call__(self, seq: Sequence[str]) -> bool:
-        """Check that flag diacritic configuration is valid
-
-        :param seq: A list of string symbols in self.alphabet
-        
-        :return: True if the combination of flag diactritics in
-        'seq' is valid. False, otherwise.
-
-        Raises KeyError when 'seq' contains symbols which are
-        absent from the FST alphabet.
-        """
-        config = {var:"{}" for var in self.vars}
-        for sym in seq:
-            if not sym in self.alphabet:
-                raise KeyError(sym)
-            if sym in self.flags:
-                if not self.flags[sym](config):
-                    return False
-        return True
-
 class FlagStreamFilter(FlagFilter):
     def __init__(self, alphabet: Set[str]):
         """ Create FlagStreamFilter from an FST alphabet
@@ -117,7 +97,7 @@ class FlagStreamFilter(FlagFilter):
 
     def reset(self):
         """ Reset all variables to empty value "{}" """
-        self.config = {var:"{}" for var in self.vars}
+        self.config = {var:EMPTY for var in self.vars}
         self.has_failed = False
         
     def check(self, sym: str) -> bool:
@@ -132,11 +112,31 @@ class FlagStreamFilter(FlagFilter):
         """
         if not sym in self.alphabet:
             raise KeyError(sym)
-        if self.has_failed:
-            return False
         if sym in self.flags:
             if not self.flags[sym](self.config):
                 self.has_failed = True
+        return not self.has_failed
+
+# FlagStringFilter could be implemented on top of FlagStreamFilter but
+# this custom implementation is roughly twice as fast due to fewer
+# function calls.
+class FlagStringFilter(FlagFilter):
+    def __call__(self, seq: Sequence[str]) -> bool:
+        """Check that flag diacritic configuration is valid
+
+        :param seq: A list of string symbols in self.alphabet
+        
+        :return: True if the combination of flag diactritics in
+        'seq' is valid. False, otherwise.
+
+        Raises KeyError when 'seq' contains symbols which are
+        absent from the FST alphabet.
+        """
+        config = {var:EMPTY for var in self.vars}
+        for sym in seq:
+            if not sym in self.alphabet:
+                raise KeyError(sym)
+            if sym in self.flags and not self.flags[sym](config):
                 return False
         return True
 
