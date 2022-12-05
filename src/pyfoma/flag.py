@@ -90,7 +90,7 @@ class FlagFilter:
         
         :param alphabet: A symbol set (containing strings)
         """ 
-        self.alphabet = alphabet
+        self.alphabet = {sym for sym in self.alphabet}
         self.flags = {sym:FlagOp(sym) for sym in alphabet
                       if FlagOp.is_flag(sym)}
         self.vars = {flag.var for flag in self.flags.values()}
