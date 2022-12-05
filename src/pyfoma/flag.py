@@ -7,7 +7,7 @@ class FlagOp:
         :param sym: String representation of flag diacritic 
 
         The parameter 'sym' should follow the format [[XYZ]], for
-        example "$var=val", where:
+        example "[[$var=val]]", where:
 
         1. X is a variable name matching the regex "[$]\w+" 
         2. Y is one of the operators "=" (set value), "==" (check that
@@ -72,7 +72,7 @@ class FlagOp:
         
 class FlagFilter:
     def __init__(self, alphabet):
-        """ Create FlagFilter for an FST alphabet
+        """ Create FlagFilter from an FST alphabet
         
         :param alphabet: A symbol set (containing strings)
         """ 
@@ -83,6 +83,7 @@ class FlagFilter:
                 self.flags[sym] = FlagOp(sym)
         self.vars = {flag.var for flag in self.flags.values()}
         
+class FlagStringFilter(FlagFilter):
     def __call__(self, seq):
         """Check that flag diacritic configuration is valid
 
@@ -102,7 +103,43 @@ class FlagFilter:
                 if not self.flags[sym](config):
                     return False
         return True
-                                
+
+class FlagStreamFilter(FlagFilter):
+    def __init__(self, alphabet):
+        """ Create FlagStreamFilter from an FST alphabet
+        
+        :param alphabet: A symbol set (containing strings)
+        """
+        super().__init__(alphabet)
+        self.config = None
+        self.has_failed = False
+        self.reset()
+
+    def reset(self):
+        """ Reset all variables to empty value "{}" """
+        self.config = {var:"{}" for var in self.vars}
+        self.has_failed = False
+        
+    def check(self, sym):
+        """Read next symbol and check fla diacritic configuration
+
+        :param sym: A symbol in self.alphabet
+        
+        :return: True if the combination of flag diactritics upto this
+        point is valid. False, otherwise.
+
+        Raises KeyError when 'sym' is missing from the FST alphabet.
+        """
+        if not sym in self.alphabet:
+            raise KeyError(sym)
+        if self.has_failed:
+            return False
+        if sym in self.flags:
+            if not self.flags[sym](self.config):
+                self.has_failed = True
+                return False
+        return True
+
 ####################################
 ###                              ###
 ###            TESTS             ###
@@ -228,7 +265,7 @@ class TestFlagFilter(unittest.TestCase):
                  for var in "$var1 $var2".split()
                  for op in "= == != ?=".split()
                  for val in "foo bar {} $var1 $var2".split()}
-        ffilter = FlagFilter(flags.union({"a","b"}))
+        ffilter = FlagStringFilter(flags.union({"a","b"}))
         self.assertTrue(ffilter(""))
         self.assertTrue(ffilter("a"))
         self.assertTrue(ffilter("[[$var1=foo]]".split()))
@@ -257,7 +294,7 @@ class TestFlagFilter(unittest.TestCase):
                  for var in "$var1 $var2".split()
                  for op in "= == != ?=".split()
                  for val in "foo bar {} $var1 $var2".split()}
-        ffilter = FlagFilter(flags.union({"a","b"}))
+        ffilter = FlagStringFilter(flags.union({"a","b"}))
         self.assertFalse(ffilter("a [[$var1==foo]] b".split()))
         self.assertFalse(ffilter("a [[$var1=foo]] [[$var1!=foo]]".split()))
         self.assertFalse(ffilter("a [[$var1=foo]] [[$var1=={}]]".split()))
@@ -268,12 +305,30 @@ class TestFlagFilter(unittest.TestCase):
         self.assertFalse(ffilter("a [[$var1=foo]] [[$var2=bar]] [[$var1==$var2]]".split()))
         self.assertFalse(ffilter("a [[$var1=foo]] [[$var2=$var1]] [[$var1!=$var2]]".split()))
 
+    def test_stream(self):
+        flags = {f"[[{var}{op}{val}]]"
+                 for var in "$var1 $var2".split()
+                 for op in "= == != ?=".split()
+                 for val in "foo bar {} $var1 $var2".split()}
+        ffilter = FlagStreamFilter(flags.union({"a","b"}))
+        for i,sym in enumerate("a [[$var1=foo]] [[$var2=$var1]] [[$var1!=$var2]]".split()):
+            if i == 3:
+                self.assertFalse(ffilter.check(sym))
+            else:
+                self.assertTrue(ffilter.check(sym))
+        self.assertTrue(ffilter.has_failed)
+
+        ffilter.reset()
+        for sym in "a [[$var1=foo]] [[$var2=$var1]] [[$var1==$var2]]".split():
+            ffilter.check(sym)
+        self.assertFalse(ffilter.has_failed)
+        
 def time_flag_execution(trials):
     flags = {f"[[{var}{op}{val}]]"
              for var in "$var1 $var2".split()
              for op in "= == != ?=".split()
              for val in "foo bar {} $var1 $var2".split()}
-    ffilter = FlagFilter(flags.union({"a","b"}))
+    ffilter = FlagStringFilter(flags.union({"a","b"}))
 
     seq_a = ["a" for i in range(10)]
     seq_set = ["[[$var1=foo]]"]
