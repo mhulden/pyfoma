@@ -73,8 +73,22 @@ def get_eq_tests(Xs, ys):
             tests.append(empty_eq_restr(X1, X2, ys))
     return [FST.re(".* - $r", {"r":r}) for r in tests]
 
-def eliminate_flags(fst, Xs, ys):
-    """ Eliminate all flag discritics from an FST. """
+def eliminate_flags(fst, Xs=None):
+    """Eliminate all flag diacritics from an FST. 
+
+    :param fst: An FST.
+    :param Xs: The variables to be eliminated. If None, then all
+    variables will be eliminated.
+
+    :return: An FST without flag diacritics with equivalent behavior
+    to 'fst'
+    """
+    if Xs == None:
+        flags = [FlagOp(sym) for sym in fst.alphabet if FlagOp.is_flag(sym)]
+        Xs = set(flag.var for flag in flags)
+        ys = set(flag.val for flag in flags)
+    if len(Xs) == 0:
+        return fst
     tests = get_value_tests(Xs, ys) + get_eq_tests(Xs, ys)
     flag_filter = reduce(lambda x, y: FST.re("$x & $y",{"x":x, "y":y}),tests)
     flags = [sym for sym in fst.alphabet if FlagOp.is_flag(sym)]
@@ -85,6 +99,22 @@ def eliminate_flags(fst, Xs, ys):
     fst = FST.re("$^invert($fst @ $clean)", {"fst":fst, "clean":clean})
     return fst
 
+################################
+#                              #
+#            TESTS             #
+#                              #
+################################
+import unittest
+
+class TestValueFlags(unittest.TestCase):
+    def test_neg(self):
+        fst = FST.re("a")
+        fst = eliminate_flags(fst)
+        self.assertTrue(fst == FST.re("a"))
+        fst = FST.re("a '[[$X==x]]' b")
+        fst = eliminate_flags(fst)
+        self.assertEqual(fst, FST.re("a b"))
+        
 if __name__=="__main__":
     Grammar = {}
     Grammar["S"] = [("","A")]
@@ -95,3 +125,4 @@ if __name__=="__main__":
     Lexicon = FST.rlg(Grammar, "S").epsilon_remove().minimize()
     Lexicon = eliminate_flags(Lexicon, "X Y".split(), "a b {}".split())
     print(Lexicon)
+    unittest.main()
