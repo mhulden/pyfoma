@@ -252,7 +252,7 @@ class FST:
                     any(s.finalweight != 0.0 for s in self.finalstates):
                 show_weights = True
 
-        g.attr(rankdir='LR', size='8,5')
+        g.attr(rankdir='LR')
         g.attr('node', shape='doublecircle', style='filled')
         for s in self.finalstates:
             g.node(str(statenums[id(s)]) + _float_format(s.finalweight))
