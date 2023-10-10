@@ -5,6 +5,7 @@
 import heapq, operator, itertools, re as pyre, functools
 from collections import deque, defaultdict
 from typing import Callable, Dict, Any
+import subprocess
 
 def re(*args, **kwargs):
     return FST.re(*args, **kwargs)
@@ -220,6 +221,13 @@ class FST:
             self.alphabet &= seen
         return self
 
+    def check_graphviz_installed(self):
+        try:
+            subprocess.run(["dot", "-V"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            return True
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            return False
+
     def view(self, raw=False, show_weights=False, show_alphabet=True) -> 'graphviz.Digraph':
         """Creates a 'graphviz.Digraph' object to view the FST. Will automatically display the FST in Jupyter.
 
@@ -231,6 +239,9 @@ class FST:
            If you would like to display the FST from a non-Jupyter environment, please use :code:`FST.render`
         """
         import graphviz
+        if not self.check_graphviz_installed():
+            raise EnvironmentError("Graphviz executable not found. Please install [Graphviz](https://www.graphviz.org/download/). On macOS, use `brew install graphviz`.")
+
         def _float_format(num):
             if not show_weights:
                 return ""
