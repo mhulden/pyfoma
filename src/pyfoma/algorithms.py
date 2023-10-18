@@ -651,7 +651,8 @@ def projected(fst: 'FST', dim = 0) -> 'FST':
                 t.label = lbl[sl]
                 newalphabet |= {sublabel for sublabel in lbl[sl]}
         s.transitions = newtransitions
-    fst.alphabet = newalphabet
+    if '.' not in newalphabet: # Preserve . semantics if it occurs on the tape we extract
+        fst.alphabet = newalphabet
     return fst
 
 
