@@ -250,11 +250,11 @@ class FST:
             return "/" + s
 
         def _str_fmt(s):  # Use greek lunate epsilon symbol U+03F5
-            return (sublabel if sublabel != '' else 'ϵ' for sublabel in s)
+            return (sublabel if sublabel != '' else '&#x03f5;' for sublabel in s)
 
         #        g = graphviz.Digraph('FST', filename='fsm.gv')
 
-        sigma = "Σ: {" + ','.join(sorted(a for a in self.alphabet)) + "}" \
+        sigma = "&Sigma;: {" + ','.join(sorted(a for a in self.alphabet)) + "}" \
             if show_alphabet else ""
         g = graphviz.Digraph('FST', graph_attr={"label": sigma, "rankdir": "LR"})
         statenums = self.number_unnamed_states()
