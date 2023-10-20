@@ -576,7 +576,10 @@ def compose(fst1: 'FST', fst2: 'FST') -> 'FST':
 def inverted(fst: 'FST') -> 'FST':
     """Returns a modified FST, calculating the inverse of a transducer, i.e. flips label tuples around."""
     for s in fst.states:
-        s.transitions  = {lbl[::-1]:tr for lbl, tr in s.transitions.items()}
+        for lbl, tr in s.transitions.items():
+            for t in tr:
+                t.label = t.label[::-1]
+        s.transitions = {lbl[::-1]:tr for lbl, tr in s.transitions.items()}
     return fst
 
 
