@@ -365,15 +365,15 @@ class FST:
 
         return newfst, q1q2
 
-    def generate(self: 'FST', word, weights=False):
+    def generate(self: 'FST', word, weights=False, tokenize_outputs=False):
         """Pass word through FST and return generator that yields all outputs."""
-        yield from self.apply(word, inverse=False, weights=weights)
+        yield from self.apply(word, inverse=False, weights=weights, tokenize_outputs=tokenize_outputs)
 
-    def analyze(self: 'FST', word, weights=False):
+    def analyze(self: 'FST', word, weights=False, tokenize_outputs=False):
         """Pass word through FST and return generator that yields all inputs."""
-        yield from self.apply(word, inverse=True, weights=weights)
+        yield from self.apply(word, inverse=True, weights=weights, tokenize_outputs=tokenize_outputs)
 
-    def apply(self: 'FST', word, inverse=False, weights=False):
+    def apply(self: 'FST', word, inverse=False, weights=False, tokenize_outputs=False):
         """Pass word through FST and return generator that yields outputs.
            if inverse == True, map from range to domain.
            weights is by default False. To see the cost, set weights to True."""
@@ -385,10 +385,11 @@ class FST:
         while Q:
             cost, negpos, _, output, state = heapq.heappop(Q)
             if state == None and -negpos == len(w):
+                yield_output = ''.join(output) if not tokenize_outputs else output
                 if weights == False:
-                    yield ''.join(output)
+                    yield yield_output
                 else:
-                    yield (''.join(output), cost)
+                    yield (yield_output, cost)
             elif state != None:
                 if state in self.finalstates:
                     heapq.heappush(Q, (cost + state.finalweight, negpos, next(cntr), output, None))
