@@ -83,12 +83,14 @@ def eliminate_flags(fst, Xs=None):
     :return: An FST without flag diacritics with equivalent behavior
     to 'fst'
     """
+    flags = [FlagOp(sym) for sym in fst.alphabet if FlagOp.is_flag(sym)]        
     if Xs == None:
-        flags = [FlagOp(sym) for sym in fst.alphabet if FlagOp.is_flag(sym)]
-        Xs = set(flag.var for flag in flags)
-        ys = set(flag.val for flag in flags)
+        Xs = set(flag.var[1:] for flag in flags)
     if len(Xs) == 0:
         return fst
+    ys = set(flag.val for flag in flags if flag.var[1:] in Xs)
+    ys.add(EMPTYVAL)
+
     tests = get_value_tests(Xs, ys) + get_eq_tests(Xs, ys)
     flag_filter = reduce(lambda x, y: FST.re("$x & $y",{"x":x, "y":y}),tests)
     flags = [sym for sym in fst.alphabet if FlagOp.is_flag(sym)]
@@ -106,15 +108,49 @@ def eliminate_flags(fst, Xs=None):
 ################################
 import unittest
 
+def equivalent(fst1, fst2):
+    comp = FST.re("($fst1 - $fst2) | ($fst2 - $fst1)", {"fst1":fst1, "fst2":fst2})
+    return len(comp.finalstates) == 0
+
 class TestValueFlags(unittest.TestCase):
+    def test_pos(self):
+        pos_flag_re = ["a",
+                       "a b",
+                       "a '[[$X=x]]' b",
+                       "a '[[$X=x]]' '[[$X=y]]' b",
+                       "a '[[$X=x]]' b '[[$X=y]]'",
+                       "a '[[$X=x]]' b '[[$X==x]]'",
+                       "a '[[$X=x]]' b '[[$X!=y]]'",
+                       "a '[[$X=x]]' b '[[$X?=x]]'"]
+        pos_elim_re = ["a",
+                       "a b",
+                       "a b",
+                       "a b",
+                       "a b",
+                       "a b",
+                       "a b",
+                       "a b"]
+        assert(len(pos_flag_re) == len(pos_elim_re))
+        for re1, re2 in zip(pos_flag_re, pos_elim_re):
+            print("With flags:",re1, "Eliminated:", re2)
+            fst1 = eliminate_flags(FST.re(re1))
+            fst2 = FST.re(re2)
+            self.assertTrue(equivalent(fst1, fst2))
+
     def test_neg(self):
-        fst = FST.re("a")
-        fst = eliminate_flags(fst)
-        self.assertTrue(fst == FST.re("a"))
-        fst = FST.re("a '[[$X==x]]' b")
-        fst = eliminate_flags(fst)
-        self.assertEqual(fst, FST.re("a b"))
-        
+        neg_flag_re = [
+            "a '[[$X==x]]'",
+            "a '[[$X==x]]'",
+            "a '[[$X=x]]' b '[[$X!=x]]'",
+            "a '[[$X=x]]' b '[[$X?=y]]'",
+            "a '[[$X=x]]' b '[[$X==y]]'",
+        ]
+        for re1 in neg_flag_re:
+            print("With flags:",re1, "Should give an empty FST")
+            fst1 = eliminate_flags(FST.re(re1))
+            fst2 = FST()
+            self.assertTrue(equivalent(fst1, fst2))
+            
 if __name__=="__main__":
     Grammar = {}
     Grammar["S"] = [("","A")]
@@ -123,6 +159,5 @@ if __name__=="__main__":
     Grammar["C"] = [("a'[[$Y=a]]'", "D"), ("b'[[$Y=b]]'", "D")]
     Grammar["D"] = [("'[[$Y==$X]]'", "#")]
     Lexicon = FST.rlg(Grammar, "S").epsilon_remove().minimize()
-    Lexicon = eliminate_flags(Lexicon, "X Y".split(), "a b {}".split())
-    print(Lexicon)
+    Lexicon = eliminate_flags(Lexicon, "X Y".split())
     unittest.main()
