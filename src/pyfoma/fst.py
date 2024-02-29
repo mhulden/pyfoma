@@ -6,6 +6,7 @@ import heapq, operator, itertools, re as pyre, functools
 from collections import deque, defaultdict
 from typing import Callable, Dict, Any
 from pyfoma.flag import FlagStringFilter, FlagOp
+import subprocess
 
 def re(*args, **kwargs):
     return FST.re(*args, **kwargs)
@@ -221,6 +222,13 @@ class FST:
             self.alphabet &= seen
         return self
 
+    def check_graphviz_installed(self):
+        try:
+            subprocess.run(["dot", "-V"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            return True
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            return False
+
     def view(self, raw=False, show_weights=False, show_alphabet=True) -> 'graphviz.Digraph':
         """Creates a 'graphviz.Digraph' object to view the FST. Will automatically display the FST in Jupyter.
 
@@ -232,6 +240,9 @@ class FST:
            If you would like to display the FST from a non-Jupyter environment, please use :code:`FST.render`
         """
         import graphviz
+        if not self.check_graphviz_installed():
+            raise EnvironmentError("Graphviz executable not found. Please install [Graphviz](https://www.graphviz.org/download/). On macOS, use `brew install graphviz`.")
+
         def _float_format(num):
             if not show_weights:
                 return ""
@@ -240,11 +251,11 @@ class FST:
             return "/" + s
 
         def _str_fmt(s):  # Use greek lunate epsilon symbol U+03F5
-            return (sublabel if sublabel != '' else 'ϵ' for sublabel in s)
+            return (sublabel if sublabel != '' else '&#x03f5;' for sublabel in s)
 
         #        g = graphviz.Digraph('FST', filename='fsm.gv')
 
-        sigma = "Σ: {" + ','.join(sorted(a for a in self.alphabet)) + "}" \
+        sigma = "&Sigma;: {" + ','.join(sorted(a for a in self.alphabet)) + "}" \
             if show_alphabet else ""
         g = graphviz.Digraph('FST', graph_attr={"label": sigma, "rankdir": "LR"})
         statenums = self.number_unnamed_states()
@@ -355,15 +366,16 @@ class FST:
 
         return newfst, q1q2
 
-    def generate(self: 'FST', word, weights=False, obey_flags=False):
+
+    def generate(self: 'FST', word, weights=False, tokenize_outputs=False, obey_flags=False):
         """Pass word through FST and return generator that yields all outputs."""
-        yield from self.apply(word, inverse=False, weights=weights, obey_flags=obey_flags)
+        yield from self.apply(word, inverse=False, weights=weights, tokenize_outputs=tokenize_outputs)
 
-    def analyze(self: 'FST', word, weights=False, obey_flags=False):
+    def analyze(self: 'FST', word, weights=False, tokenize_outputs=False, obey_flags=False):
         """Pass word through FST and return generator that yields all inputs."""
-        yield from self.apply(word, inverse=True, weights=weights, obey_flags=obey_flags)
+        yield from self.apply(word, inverse=True, weights=weights, tokenize_outputs=tokenize_outputs)
 
-    def apply(self: 'FST', word, inverse=False, weights=False, obey_flags=True):
+    def apply(self: 'FST', word, inverse=False, weights=False, tokenize_outputs=False, obey_flags=True):
         """Pass word through FST and return generator that yields outputs.
            if inverse == True, map from range to domain.
            weights is by default False. To see the cost, set weights to True.
@@ -379,11 +391,13 @@ class FST:
         
         while Q:
             cost, negpos, _, output, state = heapq.heappop(Q)
+
             if state == None and -negpos == len(w) and (not obey_flags or flag_filter(output)):
+                yield_output = ''.join(output) if not tokenize_outputs else output
                 if weights == False:
-                    yield ''.join(output)
+                    yield yield_output
                 else:
-                    yield (''.join(output), cost)
+                    yield (yield_output, cost)
             elif state != None:
                 if state in self.finalstates:
                     heapq.heappush(Q, (cost + state.finalweight, negpos, next(cntr), output, None))
