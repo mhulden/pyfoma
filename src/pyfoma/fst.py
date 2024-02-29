@@ -375,7 +375,7 @@ class FST:
         """Pass word through FST and return generator that yields all inputs."""
         yield from self.apply(word, inverse=True, weights=weights, tokenize_outputs=tokenize_outputs, obey_flags)
 
-    def apply(self: 'FST', word, inverse=False, weights=False, tokenize_outputs=False, obey_flags=True):
+    def apply(self: 'FST', word, inverse=False, weights=False, tokenize_outputs=False, obey_flags=False):
         """Pass word through FST and return generator that yields outputs.
            if inverse == True, map from range to domain.
            weights is by default False. To see the cost, set weights to True.
