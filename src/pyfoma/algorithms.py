@@ -3,6 +3,7 @@
 """Defines common algorithms over FSTs"""
 from pyfoma.fst import FST, State, Transition
 import pyfoma.private.partition_refinement as partition_refinement
+from pyfoma.eliminate_flags import eliminate_fst_flags
 
 import heapq, operator, itertools, functools
 from collections import deque
@@ -443,6 +444,10 @@ def kleene_plus(fst: 'FST') -> 'FST':
     """Returns a modified FST, applying self+."""
     return kleene_closure(fst, mode='plus')
 
+def eliminate_flags(fst: 'FST') -> 'FST':
+    """Return a modified FST, having equivalent behavior but no flag diacritics."""
+    return eliminate_fst_flags(fst)
+
 @_copy_param
 def added_weight(fst: 'FST', weight) -> 'FST':
     """Returns a modified FST, adding weight to the set of final states in the FST."""
@@ -784,6 +789,7 @@ _algorithms_to_add: Dict[str, Callable] = {
     'create_reverse_index': create_reverse_index,
     'minimize_brz': minimized_brz,
     'kleene_closure': kleene_closure,
+    'eliminate_flags': eliminate_flags,
     'add_weight': added_weight,
     'optional': optional,
     'concatenate': concatenate,
