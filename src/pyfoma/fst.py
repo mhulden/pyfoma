@@ -367,21 +367,22 @@ class FST:
         return newfst, q1q2
 
 
-    def generate(self: 'FST', word, weights=False, tokenize_outputs=False, obey_flags=False):
+    def generate(self: 'FST', word, weights=False, tokenize_outputs=False, obey_flags=True, print_flags=False):
         """Pass word through FST and return generator that yields all outputs."""
-        yield from self.apply(word, inverse=False, weights=weights, tokenize_outputs=tokenize_outputs, obey_flags=obey_flags)
+        yield from self.apply(word, inverse=False, weights=weights, tokenize_outputs=tokenize_outputs, obey_flags=obey_flags, print_flags=print_flags)
 
-    def analyze(self: 'FST', word, weights=False, tokenize_outputs=False, obey_flags=False):
+    def analyze(self: 'FST', word, weights=False, tokenize_outputs=False, obey_flags=True, print_flags=False):
         """Pass word through FST and return generator that yields all inputs."""
-        yield from self.apply(word, inverse=True, weights=weights, tokenize_outputs=tokenize_outputs, obey_flags=obey_flags)
+        yield from self.apply(word, inverse=True, weights=weights, tokenize_outputs=tokenize_outputs, obey_flags=obey_flags, print_flags=print_flags)
 
-    def apply(self: 'FST', word, inverse=False, weights=False, tokenize_outputs=False, obey_flags=False):
+    def apply(self: 'FST', word, inverse=False, weights=False, tokenize_outputs=False, obey_flags=True, print_flags=False):
         """Pass word through FST and return generator that yields outputs.
            if inverse == True, map from range to domain.
            weights is by default False. To see the cost, set weights to True.
            obey_flags toggles whether invalid flag diacritic
            combinations are filtered out. By default, flags are
-           treated as epsilons in the input."""
+           treated as epsilons in the input. print_flags toggels whether flag
+           diacritics are printed in the output. """
         IN, OUT = [-1, 0] if inverse else [0, -1]  # Tuple positions for input, output
         cntr = itertools.count()
         w = self.tokenize_against_alphabet(word)
@@ -393,6 +394,8 @@ class FST:
             cost, negpos, _, output, state = heapq.heappop(Q)
 
             if state == None and -negpos == len(w) and (not obey_flags or flag_filter(output)):
+                if not print_flags:
+                    output = FlagOp.filter_flags(output)
                 yield_output = ''.join(output) if not tokenize_outputs else output
                 if weights == False:
                     yield yield_output
