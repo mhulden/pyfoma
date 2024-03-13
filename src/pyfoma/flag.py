@@ -4,8 +4,14 @@ from typing import Dict, Set, Sequence
 # Empty variable value.
 EMPTY="{}"
 
-# Defines a valid flag diacritic
-FLAGRE=r"\[\[(\$\w+)([?!=]?=)(\$?\w+|{})\]\]"
+# Defines a valid flag diacritic VAR OP VAL
+FLAGRE1=r"\[\[(\$\w+)([?!=]?=)(\$?\w+|{})\]\]"
+
+# Defines clear flag
+FLAGRE2=r"\[\[(\$\w+)(=)\]\]"
+
+# Defines check flag without value
+FLAGRE3=r"\[\[([!]?)(\$\w+)\]\]"
 
 class FlagOp:
     def __init__(self, sym: str):
@@ -28,25 +34,47 @@ class FlagOp:
 
         """
 
-        match = re.match(FLAGRE,sym)
-        self.var, self.op, self.val = match.group(1,2,3)
+        match1 = re.match(FLAGRE1,sym)
+        match2 = re.match(FLAGRE2,sym)
+        match3 = re.match(FLAGRE3,sym)
+
+        if match1:
+            self.var, self.op, self.val = match1.group(1,2,3)
+        elif match2:
+            self.var, self.op = match2.group(1,2)
+            self.val = EMPTY
+        elif match3:
+            self.neg, self.var = match3.group(1,2)
+            self.op = "==" if (self.neg == "!") else "!="
+            self.val = EMPTY
+        else:
+            raise ValueError(f"Not a valid flag diacritic: {sym}")
+        
         self.eq_flag = (self.val[0] == "$")
         self.op_func = {"=":self.setv,
                         "==":self.check,
                         "!=":self.neg_check,
                         "?=":self.unify}[self.op]
-
+        
     @staticmethod
     def is_flag(sym: str) -> bool:
         """Check that 'sym' matches the format required by FlagOp.__init__
 
         :param sym: A string
 
-        :return: True is 'sym' is a valig flag diacritic. False,
+        :return: True is 'sym' is a valid flag diacritic. False,
         otherwise.
 
         """
-        return re.match(FLAGRE,sym) != None
+        return (re.match(FLAGRE1,sym) != None or
+                re.match(FLAGRE2,sym) != None or
+                re.match(FLAGRE3,sym) != None)
+    
+
+    @staticmethod
+    def filter_flags(seq:Sequence[str]) -> Sequence[str]:
+        """ Filter out flag diacritics from symbol sequence """
+        return list(filter(lambda x : not FlagOp.is_flag(x), seq))
     
     def setv(self, config: Dict[str, str], val: str) -> bool:
         """ The operator "=" """
@@ -137,13 +165,9 @@ class FlagStringFilter(FlagFilter):
         :return: True if the combination of flag diactritics in
         'seq' is valid. False, otherwise.
 
-        Raises KeyError when 'seq' contains symbols which are
-        absent from the FST alphabet.
         """
         config = {var:EMPTY for var in self.vars}
         for sym in seq:
-            if sym != "" and not sym in self.alphabet:
-                raise KeyError(sym)
             if sym in self.flags and not self.flags[sym](config):
                 return False
         return True
@@ -171,18 +195,22 @@ class TestFlagOp(unittest.TestCase):
         for op in "?= == != =".split():
             self.assertFalse(FlagOp.is_flag("[$var{op}val]"))
             self.assertFalse(FlagOp.is_flag("[[var{op}val]]"))
-        self.assertFalse(FlagOp.is_flag("[[$var]]"))
+        self.assertTrue(FlagOp.is_flag("[[$var=]]"))
+        self.assertFalse(FlagOp.is_flag("[[$var==]]"))
+        self.assertFalse(FlagOp.is_flag("[[$var!=]]"))
+        self.assertTrue(FlagOp.is_flag("[[$var=]]"))
+        self.assertTrue(FlagOp.is_flag("[[$var]]"))
+        self.assertTrue(FlagOp.is_flag("[[!$var]]"))
 
         for op in "?= == != =".split():
             for val in "val {} $var2".split():
                 self.assertTrue(FlagOp.is_flag(f"[[$var1{op}{val}]]"))
 
     def test_init_non_flag(self):
-        self.assertRaises(AttributeError, FlagOp, sym="")
+        self.assertRaises(ValueError, FlagOp, sym="")
         for op in "?= == != =".split():
-            self.assertRaises(AttributeError, FlagOp, sym=f"[$var{op}val]")
-            self.assertRaises(AttributeError, FlagOp, sym=f"[[var{op}val]]")
-        self.assertRaises(AttributeError, FlagOp, sym="[[$var]]")
+            self.assertRaises(ValueError, FlagOp, sym=f"[$var{op}val]")
+            self.assertRaises(ValueError, FlagOp, sym=f"[[var{op}val]]")
 
     def test_call(self):
         for val in "{} foo".split():
@@ -258,7 +286,29 @@ class TestFlagOp(unittest.TestCase):
             self.assertTrue(unify_op(config))
             self.assertEqual(config["$var1"], "foo")
             self.assertEqual(config["$var2"], "foo")
-            
+
+        config = {"$var":"foo"}
+        set_op = FlagOp("[[$var=]]")
+        set_op(config)
+        self.assertEqual(config["$var"],EMPTY)
+
+        config = {"$var":EMPTY}
+        is_set_op = FlagOp("[[$var]]")
+        self.assertFalse(is_set_op(config))
+
+        config = {"$var":"foo"}
+        is_set_op = FlagOp("[[$var]]")
+        self.assertTrue(is_set_op(config))
+
+        config = {"$var":EMPTY}
+        is_set_not_op = FlagOp("[[!$var]]")
+        self.assertTrue(is_set_not_op(config))
+
+        config = {"$var":"foo"}
+        is_set_not_op = FlagOp("[[!$var]]")
+        self.assertFalse(is_set_not_op(config))
+
+
 class TestFlagFilter(unittest.TestCase):
     def test_init(self):
         flags = {f"[[{var}{op}{val}]]"
