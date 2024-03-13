@@ -409,7 +409,7 @@ class FST:
                         heapq.heappush(Q, (cost + t.weight, negpos, next(cntr), output + [lbl[OUT]], t.targetstate))
                     elif -negpos < len(w):
                         nextsym = w[-negpos] if w[-negpos] in self.alphabet else '.'
-                        appendedsym = w[-negpos] if nextsym == '.' else lbl[OUT]
+                        appendedsym = w[-negpos] if (nextsym == '.' and lbl[OUT] == '.') else lbl[OUT]
                         if nextsym == lbl[IN]:
                             heapq.heappush(Q, (
                             cost + t.weight, negpos - 1, next(cntr), output + [appendedsym], t.targetstate))
