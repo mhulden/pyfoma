@@ -24,7 +24,7 @@ class FlagOp:
 
         1. X is a variable name matching the regex "[$]\w+" 
         2. Y is one of the operators "=" (set value), "==" (check that
-        value equals), "!=" (check that value does not equal) or "$="
+        value equals), "!=" (check that value does not equal) or "?="
         (unify to value) 
         3. Z is a value matching the regex "[$]?\w+". If the value
         starts with $, then it refers to a variable.
