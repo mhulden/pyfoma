@@ -1,5 +1,7 @@
 # PyFoma
 Python Finite-State Toolkit
+[![PyPI
+version](https://badge.fury.io/py/yoyodyne.svg)](https://pypi.org/project/pyfoma)
 
 __PyFoma__ is a an open source (Apache) package for finite-state automaton and transducer modeling and learning. It is implemented entirely in Python with no external dependencies.
 
