@@ -1,6 +1,5 @@
 # PyFoma
-[![PyPI
-version](https://badge.fury.io/py/yoyodyne.svg)](https://pypi.org/project/pyfoma)
+[![PyPI version](https://badge.fury.io/py/pyfoma.svg)](https://badge.fury.io/py/pyfoma)
 
 Python Finite-State Toolkit
 
