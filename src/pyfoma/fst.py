@@ -7,6 +7,7 @@ from collections import deque, defaultdict
 from typing import Callable, Dict, Any
 from pyfoma.flag import FlagStringFilter, FlagOp
 import subprocess
+import pickle
 
 def re(*args, **kwargs):
     return FST.re(*args, **kwargs)
@@ -148,6 +149,31 @@ class FST:
         return newfst
 
     # endregion
+
+    # region Saving and loading
+    def save(self, path: str):
+        """Saves the current FST to a file.
+        Args:
+            path (str): The path to save to (without a file extension)
+        """
+        if not path.endswith('.fst'):
+            path = path + '.fst'
+        with open(path, 'wb') as f:
+            pickle.dump(self, f)
+
+    @classmethod
+    def load(cls, path: str) -> 'FST':
+        """Loads an FST from a .fst file.
+        Args:
+            path (str): The path to load from. Must be a `.fst` file
+        """
+        if not path.endswith('.fst'):
+            path = path + '.fst'
+        with open(path, 'rb') as f:
+            fst = pickle.load(f)
+        return fst
+    # endregion
+
 
     # region Utility Methods
 
