@@ -7,6 +7,7 @@ from collections import deque, defaultdict
 from typing import Callable, Dict, Any
 from pyfoma.flag import FlagStringFilter, FlagOp
 import subprocess
+import pickle
 
 def re(*args, **kwargs):
     return FST.re(*args, **kwargs)
