@@ -70,6 +70,23 @@ class TestFST(unittest.TestCase):
         f2 = FST.regex(r"'[NO\'UN]' '[VERB]'")
         self.assertEqual(f2.alphabet, {"[NO'UN]", "[VERB]"})
 
+    def test_complement(self):
+        f1 = FST.regex("~a")
+        self.assertEqual(0, len(list(f1.generate("a"))))
+        f1 = FST.regex("~(cat | dog)")
+        self.assertEqual(0, len(list(f1.generate("cat"))))
+        self.assertEqual(0, len(list(f1.generate("dog"))))
+        self.assertEqual(1, len(list(f1.generate("octopus"))))
+        f1 = FST.regex("~(cat | dog)s")
+        self.assertEqual(0, len(list(f1.generate("cats"))))
+        self.assertEqual(0, len(list(f1.generate("dogs"))))
+        self.assertEqual(1, len(list(f1.generate("octopus"))))
+        self.assertEqual(1, len(list(f1.generate("catdogs"))))
+        # * binds tighter than ~
+        f1 = FST.regex("~(cat | dog)*s")
+        self.assertEqual(0, len(list(f1.generate("catdogs"))))
+        self.assertEqual(0, len(list(f1.generate("catdogcats"))))
+
 
 if __name__ == "__main__":
     unittest.main()
