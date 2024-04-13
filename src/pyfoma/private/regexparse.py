@@ -30,7 +30,7 @@ class RegexParse:
                 'input': _builtins_input_lambda,
                 'output': _builtins_output_lambda}
     precedence = {"FUNC": 11, "COMMA": 1, "PARAM": 1, "COMPOSE": 3, "UNION": 5, "INTERSECTION": 5,
-                  "MINUS": 5, "CONCAT": 6, "STAR": 9, "PLUS": 9, "OPTIONAL": 9, "WEIGHT": 9,
+                  "MINUS": 5, "CONCAT": 6, "COMPLEMENT": 7, "STAR": 9, "PLUS": 9, "OPTIONAL": 9, "WEIGHT": 9,
                   "CP": 10, "CPOPTIONAL": 10, "RANGE": 9, "CONTEXT": 1, "PAIRUP": 2}
     operands = {"SYMBOL", "VARIABLE", "ANY", "EPSILON", "CHAR_CLASS"}
     operators = set(precedence.keys())
@@ -194,6 +194,8 @@ class RegexParse:
             elif op == 'CHAR_CLASS':
                 charranges, negated = self.character_class_parse(value)
                 _append(stack, FST.character_ranges(charranges, complement=negated))
+            elif op == 'COMPLEMENT':
+                _append(stack, _pop(stack).complement())
         if len(stack) != 1:  # If there's still stuff on the stack, that's a syntax error
             self._error_report(SyntaxError, \
                                "Something's happening here, and what it is ain't exactly clear...", 1, 0)
@@ -208,7 +210,7 @@ class RegexParse:
             (r", *", 'PARAM', r"\w+ *= *[+-]? *\w+", r""),  # Parameter
             (r"'", 'QUOTED', r"(\\[']|[^'])*", r"'"),  # Quoted sym
             (r"", 'SKIPWS', r"[ \t]+", r""),  # Skip ws
-            (r"", 'SHORTOP', r"(:\?|[|\-&*+()?:@,/_])", r""),  # main ops
+            (r"", 'SHORTOP', r"(:\?|[|\-&*+()?:@,/_~])", r""),  # main ops
             (r"\$\^", 'FUNC', r"\w+", r"(?=\s*\()"),  # Functions
             (r"\$", 'VARIABLE', r"\w+", r""),  # Variables
             (r"<", 'WEIGHT', r"[+-]?[0-9]*(\.[0-9]+)?", r">"),  # Weight

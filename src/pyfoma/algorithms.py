@@ -737,6 +737,11 @@ def difference(fst1: 'FST', fst2: 'FST') -> 'FST':
                        oplus = lambda x,y: x, pathfollow = lambda x,y: x)
 
 
+def complement(fsm: 'FST') -> 'FST':
+    """Returns the complement of an FSM."""
+    return FST.re(".* - $X", {"X": fsm})
+
+
 @_harmonize_alphabet
 def product(fst1: 'FST', fst2: 'FST', finalf = any, oplus = min, pathfollow = lambda x,y: x|y) -> 'FST':
     """Generates the product FST from fst1, fst2. The helper functions by default
@@ -805,5 +810,6 @@ _algorithms_to_add: Dict[str, Callable] = {
     'union': union,
     'intersection': intersection,
     'difference': difference,
-    'product': product
+    'product': product,
+    'complement': complement,
 }
