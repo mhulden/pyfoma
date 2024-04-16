@@ -126,7 +126,7 @@ class TestFST(unittest.TestCase):
 class TestSymbols(unittest.TestCase):
     MULTICHAR_SYMBOLS = "u: ch ll x̌ʷ".split()
 
-    def test_rlg_multichar(self):
+    def test_rlg(self):
         """Verify multi-character symbols in lexicons (lexc style)"""
         # Hopefully the third one is not an actual word for anyone
         words = ["hecho", "llama", "xu:x̌ʷ"]
@@ -138,9 +138,8 @@ class TestSymbols(unittest.TestCase):
         for word in words:
             self.assertEqual(word, next(lex.generate(word)))
 
-    def test_from_strings_multichar(self):
+    def test_from_strings(self):
         """Verify multi-character symbols in from_strings"""
-        # Hopefully the third one is not an actual word for anyone
         words = ["hecho", "llama", "xu:x̌ʷ"]
         lex = FST.from_strings(words, multichar_symbols=self.MULTICHAR_SYMBOLS)
         for sym in self.MULTICHAR_SYMBOLS:
@@ -148,7 +147,31 @@ class TestSymbols(unittest.TestCase):
         for word in words:
             self.assertEqual(word, next(lex.generate(word)))
 
-    def test_rewrite_multichar(self):
+    def test_quotes(self):
+        # Make sure already-quoted things stay quoted correctly and we
+        # can pathologically escape quotes everywhere
+        words = ["'HACKEM'MUCHE", r"FOOBIE'BL\'ETCH'", r"'''"]
+        lex = FST.from_strings(words, multichar_symbols=["CH"])
+        assert "HACKEM" in lex.alphabet
+        assert "BL'ETCH" in lex.alphabet
+        assert "'" in lex.alphabet
+        assert "CH" in lex.alphabet
+        self.assertEqual("HACKEMMUCHE", next(lex.generate("HACKEMMUCHE")))
+        self.assertEqual("FOOBIEBL'ETCH", next(lex.generate("FOOBIEBL'ETCH")))
+        # Escaped quotes in explicit multichar symbol
+        rule = FST.regex(r"$^rewrite('n\'t':(nt) / is _)")
+        self.assertEqual("isnt", next(rule.generate("isn't")))
+        # Escaped quotes in multichar_symbols
+        rule = FST.regex(r"$^rewrite(n't:(nt) / is _)",
+                         multichar_symbols=["n't"])
+        self.assertEqual("isnt", next(rule.generate("isn't")))
+        # Escaped quotes in explicit multichar symbol not destroyed by
+        # multichar_symbols escaping
+        rule = FST.regex(r"$^rewrite('n\'t':(nt) / is _)",
+                         multichar_symbols=["n't"])
+        self.assertEqual("isnt", next(rule.generate("isn't")))
+
+    def test_rewrite(self):
         """Verify multi-character symbols in rewrite rules"""
         # Yes, you can put forbidden characters in symbols now (just
         # because you can doesn't necessarily mean you should)

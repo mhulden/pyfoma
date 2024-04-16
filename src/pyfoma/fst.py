@@ -18,17 +18,19 @@ def _multichar_matcher(multichar_symbols: Iterable[str]) -> pyre.Pattern:
     """Create matcher for unquoted multichar symbols in lexicons and
     regular expressions."""
     return pyre.compile(
-        r"(?:'((?:\'|[^'])*)'|("
+        r"('(?:\\'|[^'])*')|("
         + "|".join(pyre.escape(sym)
                    for sym in multichar_symbols
                    if len(sym) > 1)
-        + r"))")
+        + r")")
 
 
 def _multichar_replacer(matchobj: pyre.Match):
     """Replace character or quoted string with quoted thing."""
     quoted, sym = matchobj.groups()
-    return f"'{quoted if quoted is not None else sym}'"
+    if quoted is not None:
+        return quoted
+    return "'" + sym.replace("'", r"\'") + "'"
 
 
 # TODO: Move all algorithm functions to the algorithms module
@@ -136,11 +138,13 @@ class FST:
             if escaper is not None:
                 w = escaper.sub(_multichar_replacer, w)
             tokens = []
-            tok_re = r"'(?P<multi>([']|[^']*))'|\\(?P<esc>(.))|(?P<single>(.))"
+            tok_re = r"'(?P<multi>'|(?:\\'|[^'])*)'|\\(?P<esc>(.))|(?P<single>(.))"
             for mo in pyre.finditer(tok_re, w):
                 token = mo.group(mo.lastgroup)
                 if token == " " and mo.lastgroup == 'single':
                     token = ""  # normal spaces for alignment, escaped for actual
+                elif mo.lastgroup == "multi":
+                    token = token.replace(r"\'", "'")
                 tokens.append(token)
             return tokens
 
