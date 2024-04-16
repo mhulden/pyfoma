@@ -151,25 +151,28 @@ class TestSymbols(unittest.TestCase):
         """Make sure already-quoted things stay quoted correctly and we
         can pathologically escape quotes everywhere"""
         words = ["'HACKEM'MUCHE", r"FOOBIE'BL\'ETCH'", r"'''"]
-        lex = FST.from_strings(words, multichar_symbols=["CH"])
+        lex = FST.from_strings(words, multichar_symbols=["CH", "BL"])
         self.assertTrue("HACKEM" in lex.alphabet)
         self.assertTrue("BL'ETCH" in lex.alphabet)
         self.assertTrue("'" in lex.alphabet)
         self.assertTrue("CH" in lex.alphabet)
+        # Ensure that we don't introduce multichar_symbols inside
+        # already quoted symbols
+        self.assertTrue("BL" not in lex.alphabet)
         self.assertEqual("HACKEMMUCHE", next(lex.generate("HACKEMMUCHE")))
         self.assertEqual("FOOBIEBL'ETCH", next(lex.generate("FOOBIEBL'ETCH")))
         # Escaped quotes in explicit multichar symbol
-        rule = FST.regex(r"$^rewrite('n\'t':(nt) / is _)")
-        self.assertEqual("isnt", next(rule.generate("isn't")))
+        rule = FST.regex(r"$^rewrite('n\'t':(' 'not) / is _)")
+        self.assertEqual("is not", next(rule.generate("isn't")))
         # Escaped quotes in multichar_symbols
-        rule = FST.regex(r"$^rewrite(n't:(nt) / is _)",
+        rule = FST.regex(r"$^rewrite(n't:(' 'not) / is _)",
                          multichar_symbols=["n't"])
-        self.assertEqual("isnt", next(rule.generate("isn't")))
+        self.assertEqual("is not", next(rule.generate("isn't")))
         # Escaped quotes in explicit multichar symbol not destroyed by
         # multichar_symbols escaping
-        rule = FST.regex(r"$^rewrite('n\'t':(nt) / is _)",
+        rule = FST.regex(r"$^rewrite('n\'t':(' 'not) / is _)",
                          multichar_symbols=["n't"])
-        self.assertEqual("isnt", next(rule.generate("isn't")))
+        self.assertEqual("is not", next(rule.generate("isn't")))
 
     def test_single_quotes(self):
         """Test that literal single quotes work everywhere, in a
