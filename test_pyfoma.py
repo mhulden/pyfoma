@@ -138,6 +138,16 @@ class TestSymbols(unittest.TestCase):
         for word in words:
             self.assertEqual(word, next(lex.generate(word)))
 
+    def test_from_strings_multichar(self):
+        """Verify multi-character symbols in from_strings"""
+        # Hopefully the third one is not an actual word for anyone
+        words = ["hecho", "llama", "xu:x̌ʷ"]
+        lex = FST.from_strings(words, multichar_symbols=self.MULTICHAR_SYMBOLS)
+        for sym in self.MULTICHAR_SYMBOLS:
+            self.assertTrue(sym in lex.alphabet)
+        for word in words:
+            self.assertEqual(word, next(lex.generate(word)))
+
     def test_rewrite_multichar(self):
         """Verify multi-character symbols in rewrite rules"""
         # Yes, you can put forbidden characters in symbols now (just

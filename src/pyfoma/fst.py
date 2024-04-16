@@ -117,12 +117,12 @@ class FST:
 
     re = regex
 
-
     @classmethod
-    def from_strings(cls, strings):
+    def from_strings(cls, strings, multichar_symbols=None):
         """Create an automaton that accepts words in the iterable 'strings'."""
-        Grammar = {"Start":((w, "#") for w in strings)}
-        return FST.rlg(Grammar, "Start").determinize_as_dfa().minimize().label_states_topology()
+        Grammar = {"Start": ((w, "#") for w in strings)}
+        lex = FST.rlg(Grammar, "Start", multichar_symbols=multichar_symbols)
+        return lex.determinize_as_dfa().minimize().label_states_topology()
 
     @classmethod
     def rlg(cls, grammar, startsymbol, multichar_symbols=None):
