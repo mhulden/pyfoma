@@ -148,14 +148,14 @@ class TestSymbols(unittest.TestCase):
             self.assertEqual(word, next(lex.generate(word)))
 
     def test_quotes(self):
-        # Make sure already-quoted things stay quoted correctly and we
-        # can pathologically escape quotes everywhere
+        """Make sure already-quoted things stay quoted correctly and we
+        can pathologically escape quotes everywhere"""
         words = ["'HACKEM'MUCHE", r"FOOBIE'BL\'ETCH'", r"'''"]
         lex = FST.from_strings(words, multichar_symbols=["CH"])
-        assert "HACKEM" in lex.alphabet
-        assert "BL'ETCH" in lex.alphabet
-        assert "'" in lex.alphabet
-        assert "CH" in lex.alphabet
+        self.assertTrue("HACKEM" in lex.alphabet)
+        self.assertTrue("BL'ETCH" in lex.alphabet)
+        self.assertTrue("'" in lex.alphabet)
+        self.assertTrue("CH" in lex.alphabet)
         self.assertEqual("HACKEMMUCHE", next(lex.generate("HACKEMMUCHE")))
         self.assertEqual("FOOBIEBL'ETCH", next(lex.generate("FOOBIEBL'ETCH")))
         # Escaped quotes in explicit multichar symbol
@@ -170,6 +170,23 @@ class TestSymbols(unittest.TestCase):
         rule = FST.regex(r"$^rewrite('n\'t':(nt) / is _)",
                          multichar_symbols=["n't"])
         self.assertEqual("isnt", next(rule.generate("isn't")))
+
+    def test_single_quotes(self):
+        """Test that literal single quotes work everywhere, in a
+        multitude of different ways."""
+        lex = FST.from_strings(["foo'''bar"])
+        self.assertTrue("'" in lex.alphabet)
+        self.assertEqual("foo'bar", next(lex.generate("foo'bar")))
+        # such escaping, so wow
+        f1 = FST.regex("foo ''' bar")
+        self.assertTrue("'" in f1.alphabet)
+        self.assertEqual("foo'bar", next(f1.generate("foo'bar")))
+        f2 = FST.regex(r"foo \' bar")
+        self.assertTrue("'" in f2.alphabet)
+        self.assertEqual("foo'bar", next(f2.generate("foo'bar")))
+        f3 = FST.regex(r"foo '\'' bar")
+        self.assertTrue("'" in f3.alphabet)
+        self.assertEqual("foo'bar", next(f3.generate("foo'bar")))
 
     def test_rewrite(self):
         """Verify multi-character symbols in rewrite rules"""
