@@ -123,5 +123,30 @@ class TestFST(unittest.TestCase):
         self.assertEqual("cat", next(f1.generate("octopus")))
 
 
+class TestSymbols(unittest.TestCase):
+    MULTICHAR_SYMBOLS = "u: ch ll x̌ʷ".split()
+
+    def test_rlg_multichar(self):
+        """Verify multi-character symbols in lexicons (lexc style)"""
+        # Hopefully the third one is not an actual word for anyone
+        words = ["hecho", "llama", "xu:x̌ʷ"]
+        lex = FST.rlg({
+            "Root": [(word, "#") for word in words]
+        }, "Root", multichar_symbols=self.MULTICHAR_SYMBOLS)
+        for sym in self.MULTICHAR_SYMBOLS:
+            self.assertTrue(sym in lex.alphabet)
+        for word in words:
+            self.assertEqual(word, next(lex.generate(word)))
+
+    def test_rewrite_multichar(self):
+        """Verify multi-character symbols in rewrite rules"""
+        # Yes, you can put forbidden characters in symbols now (just
+        # because you can doesn't necessarily mean you should)
+        rule = FST.regex("$^rewrite(x̌ʷ:x / u: _ #)",
+                         multichar_symbols=self.MULTICHAR_SYMBOLS)
+        self.assertEqual("xu:x", next(rule.generate("xu:x̌ʷ")))
+        self.assertEqual("xux̌ʷ", next(rule.generate("xux̌ʷ")))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -4,13 +4,31 @@
 
 import heapq, operator, itertools, re as pyre, functools
 from collections import deque, defaultdict
-from typing import Callable, Dict, Any
+from typing import Callable, Dict, Any, Iterable
 from pyfoma.flag import FlagStringFilter, FlagOp
 import subprocess
 import pickle
 
+
 def re(*args, **kwargs):
     return FST.re(*args, **kwargs)
+
+
+def _multichar_matcher(multichar_symbols: Iterable[str]) -> pyre.Pattern:
+    """Create matcher for unquoted multichar symbols in lexicons and
+    regular expressions."""
+    return pyre.compile(
+        r"(?:'((?:\'|[^'])*)'|("
+        + "|".join(pyre.escape(sym)
+                   for sym in multichar_symbols
+                   if len(sym) > 1)
+        + r"))")
+
+
+def _multichar_replacer(matchobj: pyre.Match):
+    """Replace character or quoted string with quoted thing."""
+    quoted, sym = matchobj.groups()
+    return f"'{quoted if quoted is not None else sym}'"
 
 
 # TODO: Move all algorithm functions to the algorithms module
@@ -82,7 +100,7 @@ class FST:
         return newfst
 
     @classmethod
-    def regex(cls, regularexpression, defined = {}, functions = set()):
+    def regex(cls, regularexpression, defined = {}, functions = set(), multichar_symbols=None):
         """Compile a regular expression and return the resulting FST.
            Keyword arguments:
            defined -- a dictionary of defined FSTs that the compiler can access whenever
@@ -91,7 +109,9 @@ class FST:
                        is referenced in the regex, e.g. $^myfunc(...)
         """
         import pyfoma.private.regexparse as regexparse
-
+        if multichar_symbols is not None:
+            escaper = _multichar_matcher(multichar_symbols)
+            regularexpression = escaper.sub(_multichar_replacer, regularexpression)
         myregex = regexparse.RegexParse(regularexpression, defined, functions)
         return myregex.compiled
 
@@ -105,11 +125,16 @@ class FST:
         return FST.rlg(Grammar, "Start").determinize_as_dfa().minimize().label_states_topology()
 
     @classmethod
-    def rlg(cls, grammar, startsymbol):
+    def rlg(cls, grammar, startsymbol, multichar_symbols=None):
         """Compile a (weighted) right-linear grammar into an FST, similarly to lexc."""
+        escaper = None
+        if multichar_symbols is not None:
+            escaper = _multichar_matcher(multichar_symbols)
         def _rlg_tokenize(w):
             if w == '':
                 return ['']
+            if escaper is not None:
+                w = escaper.sub(_multichar_replacer, w)
             tokens = []
             tok_re = r"'(?P<multi>([']|[^']*))'|\\(?P<esc>(.))|(?P<single>(.))"
             for mo in pyre.finditer(tok_re, w):
