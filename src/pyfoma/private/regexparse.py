@@ -208,7 +208,7 @@ class RegexParse:
         token_regexes = [
             (r"\\", 'ESCAPED', r".", r""),  # Esc'd sym
             (r", *", 'PARAM', r"\w+ *= *[+-]? *\w+", r""),  # Parameter
-            (r"'", 'QUOTED', r"(\\[']|[^'])*", r"'"),  # Quoted sym
+            (r"'", 'QUOTED', r"'|(\\'|[^'])*", r"'"),  # Quoted sym
             (r"", 'SKIPWS', r"[ \t]+", r""),  # Skip ws
             (r"", 'SHORTOP', r"(:\?|[|\-&*+()?:@,/_~])", r""),  # main ops
             (r"\$\^", 'FUNC', r"\w+", r"(?=\s*\()"),  # Functions
