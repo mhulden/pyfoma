@@ -1,4 +1,5 @@
 import unittest
+from pyfoma import algorithms
 from pyfoma.fst import FST
 
 class TestFST(unittest.TestCase):
@@ -71,12 +72,14 @@ class TestFST(unittest.TestCase):
         self.assertEqual(f2.alphabet, {"[NO'UN]", "[VERB]"})
 
     def test_complement(self):
+        """Test the complement operator / method"""
         f1 = FST.regex("~a")
         self.assertEqual(0, len(list(f1.generate("a"))))
         f1 = FST.regex("~(cat | dog)")
         self.assertEqual(0, len(list(f1.generate("cat"))))
         self.assertEqual(0, len(list(f1.generate("dog"))))
         self.assertEqual(1, len(list(f1.generate("octopus"))))
+        # ~ binds tighter than concatenation
         f1 = FST.regex("~(cat | dog)s")
         self.assertEqual(0, len(list(f1.generate("cats"))))
         self.assertEqual(0, len(list(f1.generate("dogs"))))
@@ -86,6 +89,38 @@ class TestFST(unittest.TestCase):
         f1 = FST.regex("~(cat | dog)*s")
         self.assertEqual(0, len(list(f1.generate("catdogs"))))
         self.assertEqual(0, len(list(f1.generate("catdogcats"))))
+        # Verify that the new algorithm/method works too
+        f1 = FST.regex("octopus")
+        self.assertEqual(0, len(list(f1.generate("dog"))))
+        self.assertEqual(1, len(list(f1.generate("octopus"))))
+        # Non-mutating
+        f2 = algorithms.complement(f1)
+        self.assertEqual(1, len(list(f2.generate("dog"))))
+        self.assertEqual(0, len(list(f2.generate("octopus"))))
+        # Mutating
+        f1.complement()
+        self.assertEqual(1, len(list(f1.generate("dog"))))
+        self.assertEqual(0, len(list(f1.generate("octopus"))))
+        f1.complement()
+        self.assertEqual(0, len(list(f1.generate("dog"))))
+        self.assertEqual(1, len(list(f1.generate("octopus"))))
+
+    def test_methods(self):
+        """Verify that generated methods work as expected"""
+        f1 = FST.regex("(cat):(dog)")
+        f2 = FST.regex("(dog):(octopus)")
+        f3 = algorithms.compose(f1, f2)
+        f4 = algorithms.inverted(f1)
+        self.assertEqual("dog", next(f1.generate("cat")))
+        self.assertEqual("octopus", next(f2.generate("dog")))
+        self.assertEqual("octopus", next(f3.generate("cat")))
+        self.assertEqual("cat", next(f4.generate("dog")))
+        # This is mutating (maybe not what you expect?)
+        f1.compose(f2)
+        self.assertEqual("octopus", next(f1.generate("cat")))
+        # So is this!
+        f1.invert()
+        self.assertEqual("cat", next(f1.generate("octopus")))
 
 
 if __name__ == "__main__":
