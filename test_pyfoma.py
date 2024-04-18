@@ -1,4 +1,5 @@
 import unittest
+from pyfoma import algorithms
 from pyfoma.fst import FST
 
 class TestFST(unittest.TestCase):
@@ -71,12 +72,14 @@ class TestFST(unittest.TestCase):
         self.assertEqual(f2.alphabet, {"[NO'UN]", "[VERB]"})
 
     def test_complement(self):
+        """Test the complement operator / method"""
         f1 = FST.regex("~a")
         self.assertEqual(0, len(list(f1.generate("a"))))
         f1 = FST.regex("~(cat | dog)")
         self.assertEqual(0, len(list(f1.generate("cat"))))
         self.assertEqual(0, len(list(f1.generate("dog"))))
         self.assertEqual(1, len(list(f1.generate("octopus"))))
+        # ~ binds tighter than concatenation
         f1 = FST.regex("~(cat | dog)s")
         self.assertEqual(0, len(list(f1.generate("cats"))))
         self.assertEqual(0, len(list(f1.generate("dogs"))))
@@ -86,6 +89,116 @@ class TestFST(unittest.TestCase):
         f1 = FST.regex("~(cat | dog)*s")
         self.assertEqual(0, len(list(f1.generate("catdogs"))))
         self.assertEqual(0, len(list(f1.generate("catdogcats"))))
+        # Verify that the new algorithm/method works too
+        f1 = FST.regex("octopus")
+        self.assertEqual(0, len(list(f1.generate("dog"))))
+        self.assertEqual(1, len(list(f1.generate("octopus"))))
+        # Non-mutating
+        f2 = algorithms.complement(f1)
+        self.assertEqual(1, len(list(f2.generate("dog"))))
+        self.assertEqual(0, len(list(f2.generate("octopus"))))
+        # Mutating
+        f1.complement()
+        self.assertEqual(1, len(list(f1.generate("dog"))))
+        self.assertEqual(0, len(list(f1.generate("octopus"))))
+        f1.complement()
+        self.assertEqual(0, len(list(f1.generate("dog"))))
+        self.assertEqual(1, len(list(f1.generate("octopus"))))
+
+    def test_methods(self):
+        """Verify that generated methods work as expected"""
+        f1 = FST.regex("(cat):(dog)")
+        f2 = FST.regex("(dog):(octopus)")
+        f3 = algorithms.compose(f1, f2)
+        f4 = algorithms.inverted(f1)
+        self.assertEqual("dog", next(f1.generate("cat")))
+        self.assertEqual("octopus", next(f2.generate("dog")))
+        self.assertEqual("octopus", next(f3.generate("cat")))
+        self.assertEqual("cat", next(f4.generate("dog")))
+        # This is mutating (maybe not what you expect?)
+        f1.compose(f2)
+        self.assertEqual("octopus", next(f1.generate("cat")))
+        # So is this!
+        f1.invert()
+        self.assertEqual("cat", next(f1.generate("octopus")))
+
+
+class TestSymbols(unittest.TestCase):
+    MULTICHAR_SYMBOLS = "u: ch ll x̌ʷ".split()
+
+    def test_rlg(self):
+        """Verify multi-character symbols in lexicons (lexc style)"""
+        # Hopefully the third one is not an actual word for anyone
+        words = ["hecho", "llama", "xu:x̌ʷ"]
+        lex = FST.rlg({
+            "Root": [(word, "#") for word in words]
+        }, "Root", multichar_symbols=self.MULTICHAR_SYMBOLS)
+        for sym in self.MULTICHAR_SYMBOLS:
+            self.assertTrue(sym in lex.alphabet)
+        for word in words:
+            self.assertEqual(word, next(lex.generate(word)))
+
+    def test_from_strings(self):
+        """Verify multi-character symbols in from_strings"""
+        words = ["hecho", "llama", "xu:x̌ʷ"]
+        lex = FST.from_strings(words, multichar_symbols=self.MULTICHAR_SYMBOLS)
+        for sym in self.MULTICHAR_SYMBOLS:
+            self.assertTrue(sym in lex.alphabet)
+        for word in words:
+            self.assertEqual(word, next(lex.generate(word)))
+
+    def test_quotes(self):
+        """Make sure already-quoted things stay quoted correctly and we
+        can pathologically escape quotes everywhere"""
+        words = ["'HACKEM'MUCHE", r"FOOBIE'BL\'ETCH'", r"'''"]
+        lex = FST.from_strings(words, multichar_symbols=["CH", "BL"])
+        self.assertTrue("HACKEM" in lex.alphabet)
+        self.assertTrue("BL'ETCH" in lex.alphabet)
+        self.assertTrue("'" in lex.alphabet)
+        self.assertTrue("CH" in lex.alphabet)
+        # Ensure that we don't introduce multichar_symbols inside
+        # already quoted symbols
+        self.assertTrue("BL" not in lex.alphabet)
+        self.assertEqual("HACKEMMUCHE", next(lex.generate("HACKEMMUCHE")))
+        self.assertEqual("FOOBIEBL'ETCH", next(lex.generate("FOOBIEBL'ETCH")))
+        # Escaped quotes in explicit multichar symbol
+        rule = FST.regex(r"$^rewrite('n\'t':(' 'not) / is _)")
+        self.assertEqual("is not", next(rule.generate("isn't")))
+        # Escaped quotes in multichar_symbols
+        rule = FST.regex(r"$^rewrite(n't:(' 'not) / is _)",
+                         multichar_symbols=["n't"])
+        self.assertEqual("is not", next(rule.generate("isn't")))
+        # Escaped quotes in explicit multichar symbol not destroyed by
+        # multichar_symbols escaping
+        rule = FST.regex(r"$^rewrite('n\'t':(' 'not) / is _)",
+                         multichar_symbols=["n't"])
+        self.assertEqual("is not", next(rule.generate("isn't")))
+
+    def test_single_quotes(self):
+        """Test that literal single quotes work everywhere, in a
+        multitude of different ways."""
+        lex = FST.from_strings(["foo'''bar"])
+        self.assertTrue("'" in lex.alphabet)
+        self.assertEqual("foo'bar", next(lex.generate("foo'bar")))
+        # such escaping, so wow
+        f1 = FST.regex("foo ''' bar")
+        self.assertTrue("'" in f1.alphabet)
+        self.assertEqual("foo'bar", next(f1.generate("foo'bar")))
+        f2 = FST.regex(r"foo \' bar")
+        self.assertTrue("'" in f2.alphabet)
+        self.assertEqual("foo'bar", next(f2.generate("foo'bar")))
+        f3 = FST.regex(r"foo '\'' bar")
+        self.assertTrue("'" in f3.alphabet)
+        self.assertEqual("foo'bar", next(f3.generate("foo'bar")))
+
+    def test_rewrite(self):
+        """Verify multi-character symbols in rewrite rules"""
+        # Yes, you can put forbidden characters in symbols now (just
+        # because you can doesn't necessarily mean you should)
+        rule = FST.regex("$^rewrite(x̌ʷ:x / u: _ #)",
+                         multichar_symbols=self.MULTICHAR_SYMBOLS)
+        self.assertEqual("xu:x", next(rule.generate("xu:x̌ʷ")))
+        self.assertEqual("xux̌ʷ", next(rule.generate("xux̌ʷ")))
 
 
 if __name__ == "__main__":

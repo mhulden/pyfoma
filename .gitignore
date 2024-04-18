@@ -39,3 +39,4 @@ pip-delete-this-directory.txt
 .DS_Store
 
 .idea/
+.ipynb_checkpoints

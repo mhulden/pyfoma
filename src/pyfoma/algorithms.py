@@ -737,9 +737,9 @@ def difference(fst1: 'FST', fst2: 'FST') -> 'FST':
                        oplus = lambda x,y: x, pathfollow = lambda x,y: x)
 
 
-def complement(fsm: 'FST') -> 'FST':
-    """Returns the complement of an FSM."""
-    return FST.re(".* - $X", {"X": fsm})
+def complement(fst: 'FST') -> 'FST':
+    """Returns the complement of an FST."""
+    return FST.re(".* - $X", {"X": fst})
 
 
 @_harmonize_alphabet
