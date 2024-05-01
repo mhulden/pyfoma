@@ -2,9 +2,11 @@
 
 """PyFoma Finite-State Tool."""
 
-import heapq, operator, itertools, re as pyre, functools
+import heapq, json, itertools, re as pyre
 from collections import deque, defaultdict
-from typing import Callable, Dict, Any, Iterable
+from typing import Callable, Dict, Any, Iterable, TextIO
+from os import PathLike
+from pathlib import Path
 from pyfoma.flag import FlagStringFilter, FlagOp
 import subprocess
 import pickle
@@ -201,6 +203,100 @@ class FST:
         with open(path, 'rb') as f:
             fst = pickle.load(f)
         return fst
+
+    def save_att(self, base: PathLike[str], state_symbols=False, epsilon="@0@"):
+        """Save to AT&T format files for use with other FST libraries
+        (Foma, OpenFST, RustFST, HFST, etc).
+
+        This will, in addition to saving the transitions in `base`,
+        also create separate files with the extensions `.isyms` and
+        `.osyms` containing the input and output symbol tables (so for
+        example if base is `test.fst`, it will create `test.isyms` and
+        `test.osyms`)
+
+        Note also that the AT&T format has no mechanism for
+        quoting or escaping characters (notably whitespace) in symbols
+        and state names, but only tabs are used as field separators by
+        default, so any other characters should be acceptable (though
+        not always recommended).  The symbol `@0@` is used by default
+        for epsilon (but can be changed with the `epsilon` parameter)
+        as this is Foma's default, and will always have symbol ID 0 as
+        this is required by OpenFST.
+
+        If `state_symbols` is true, the names of states will be
+        retained in the output file and a state symbol table created
+        with the extension `.ssyms`.  This option is disabled by
+        default since it is not compatible with Foma.
+        """
+        path = Path(base)
+        ssympath = path.with_suffix(".ssyms")
+        isympath = path.with_suffix(".isyms")
+        osympath = path.with_suffix(".osyms")
+        # Number all states and create state symbol table
+        if state_symbols:
+            ssyms = [self.initialstate.name]
+        else:
+            ssyms = ["0"]
+        ssymtab = {id(self.initialstate): ssyms[0]}
+        for s in self.states:
+            if s == self.initialstate:
+                continue
+            if s.name is None or not state_symbols:
+                name = str(len(ssyms))
+            else:
+                name = s.name
+            ssymtab[id(s)] = name
+            ssyms.append(name)
+        if state_symbols:
+            with open(ssympath, "wt") as outfh:
+                for idx, name in enumerate(ssyms):
+                    print(f"{name}\t{idx}", file=outfh)
+        # Do a second pass to output the FST itself (we will always have
+        # to do this because of the need to number states)
+        isyms = {epsilon: 0}
+        osyms = {epsilon: 0}
+
+        def output_state(s: State, outfh: TextIO):
+            name = ssymtab[id(s)]
+            for label, arcs in s.transitions.items():
+                if len(label) == 1:
+                    isym = osym = (label[0] or epsilon)
+                else:
+                    isym, osym = ((x or epsilon) for x in label)
+                if isym not in isyms:
+                    isyms[isym] = len(isyms)
+                if osym not in osyms:
+                    osyms[osym] = len(osyms)
+                for transition in arcs:
+                    dest = ssymtab[id(transition.targetstate)]
+                    fields = [
+                        name,
+                        dest,
+                        isym,
+                        osym,
+                    ]
+                    if transition.weight != 0.0:
+                        fields.append(transition.weight)
+                    print("\t".join(fields), file=outfh)
+            # NOTE: These are not required to be at the end of the file
+            if s in self.finalstates:
+                name = ssymtab[id(s)]
+                if s.finalweight != 0.0:
+                    print(f"{name}\t{s.finalweight}", file=outfh)
+                else:
+                    print(name, file=outfh)
+
+        with open(path, "wt") as outfh:
+            output_state(self.initialstate, outfh)
+            for s in self.states:
+                if s != self.initialstate:
+                    output_state(s, outfh)
+        with open(isympath, "wt") as outfh:
+            for name, idx in isyms.items():
+                print(f"{name}\t{idx}", file=outfh)
+        with open(osympath, "wt") as outfh:
+            for name, idx in osyms.items():
+                print(f"{name}\t{idx}", file=outfh)
     # endregion
 
 
@@ -491,6 +587,68 @@ class FST:
             tokens.append(t)
             start += len(t)
         return tokens
+
+    def todict(self, utf16_maxlen=False) -> Dict[str, Any]:
+        """Create a dictionary form of the FST for export to
+        JSON/Javascript.  If it will ultimately be used by Javascript,
+        pass `utf16_maxlen=True`."""
+        # (re-)number all the states making sure the initial state is 0
+        # (the Javascript code depends on this, all other state numbers
+        # are arbitrary strings)
+        statenums = {id(self.initialstate): 0}
+        for s in self.states:
+            if s == self.initialstate:
+                continue
+            statenums[id(s)] = len(statenums)
+        # No need to hold out the initial state since it has number 0
+        transitions = {}
+        finals = {}
+        alphabet = {}
+        maxlen = 0
+        for s in self.states:
+            src = statenums[id(s)]
+            for label, arcs in s.transitions.items():
+                if len(label) == 1:
+                    isym = osym = label[0]
+                else:
+                    isym, osym = label
+                for sym in isym, osym:
+                    # Omit epsilon from symbol table
+                    if sym == "":
+                        continue
+                    if sym not in alphabet:
+                        # Reserve 0, 1, 2 for epsilon, identity, unknown
+                        alphabet[sym] = 3 + len(alphabet)
+                        # For Javascript we will recompute this based on
+                        # evil UTF-16
+                        maxlen = max(maxlen, len(sym))
+                # Nothing to do to the symbols beyond that as pyfoma
+                # already uses the same convention of epsilon='', and JSON
+                # encoding will take care of escaping everything for us
+                transitions.setdefault(f"{src}|{isym}", []).extend(
+                    # Note, weights are ignored...
+                    {statenums[id(arc.targetstate)]: osym} for arc in arcs
+                )
+            if s in self.finalstates:
+                finals[src] = 1
+        if utf16_maxlen:
+            # Note utf-16le because we do not want a valuable BOM
+            maxlen = max(len(k.encode('utf-16le')) for k in alphabet) // 2
+        return {
+            "t": transitions,
+            "s": alphabet,
+            "f": finals,
+            "maxlen": maxlen,
+        }
+
+    def tojson(self, utf16_maxlen=False) -> str:
+        """Create JSON (which is also Javascript) for an FST for use with
+        `foma_apply_down.js`"""
+        return json.dumps(self.todict(utf16_maxlen=utf16_maxlen), ensure_ascii=False)
+
+    def tojs(self, jsnetname: str = "myNet") -> str:
+        """Create Javascript compatible with `foma2js.perl`"""
+        return " ".join(("var", jsnetname, "=", self.tojson(utf16_maxlen=True), ";"))
     # endregion
 
 
