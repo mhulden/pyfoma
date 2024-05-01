@@ -230,34 +230,41 @@ class TestUtil(unittest.TestCase):
             path = Path(tempdir)
             f = self.fst
             # Verify expected path behaviour
-            f.save_att(path / "test.fst")
-            self.assertTrue((path / "test.fst").exists())
+            f.save_att(path / "test")
+            self.assertTrue((path / "test").exists())
             self.assertTrue((path / "test.isyms").exists())
             self.assertTrue((path / "test.osyms").exists())
-            f.save_att(path / "test.att")
+            f.save_att(path / "test.att", epsilon="<eps>")
             self.assertTrue((path / "test.att").exists())
             self.assertTrue((path / "test.isyms").exists())
             self.assertTrue((path / "test.osyms").exists())
-            f.save_att(path / "test", epsilon="<eps>")
-            self.assertTrue((path / "test").exists())
-            self.assertTrue((path / "test.isyms").exists())
-            self.assertTrue((path / "test.osyms").exists())
             # Now verify contents
-            with open(path / "test", "rt") as infh:
+            with open(path / "test.att", "rt") as infh:
                 att = infh.read()
                 self.verify_att_format(att, epsilon="<eps>")
+                # If you have OpenFST you can verify this with:
+                #   fstcompile --isymbols=test.isyms \
+                #      --osymbols=test.osyms --keep_isymbols \
+                #      --keep_osymbols --keep_state_numbering \
+                #      test.att  | fstprint
             # Check state symbols get output too
             f = FST.rlg({"Root": [("", "Sublex")],
                          "Sublex": [(("foo", "bar"), "#")]}, "Root")
-            f.save_att(path / "test", state_symbols=True)
-            self.assertTrue((path / "test").exists())
-            self.assertTrue((path / "test.isyms").exists())
-            self.assertTrue((path / "test.osyms").exists())
-            self.assertTrue((path / "test.ssyms").exists())
-            with open(path / "test", "rt") as infh:
+            f.save_att(path / "test_st.fst", state_symbols=True)
+            self.assertTrue((path / "test_st.fst").exists())
+            self.assertTrue((path / "test_st.isyms").exists())
+            self.assertTrue((path / "test_st.osyms").exists())
+            self.assertTrue((path / "test_st.ssyms").exists())
+            with open(path / "test_st.fst", "rt") as infh:
                 att = infh.read()
                 self.assertIn("Root\tSublex\t@0@\t@0@", att)
                 self.assertIn("#\n", att)
+                # If you have OpenFST you can verify this with:
+                #   fstcompile --ssymbols=test_st.ssyms \
+                #      --isymbols=test_st.isyms \
+                #      --osymbols=test_st.osyms --keep_isymbols \
+                #      --keep_osymbols --keep_state_numbering \
+                #      test_st.fst | fstprint
 
     def test_to_js_on(self):
         d = self.fst.todict()
