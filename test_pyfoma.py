@@ -1,9 +1,11 @@
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from pyfoma import algorithms
 from pyfoma.fst import FST
 
 class TestFST(unittest.TestCase):
-
+    """Test basic FST functionality"""
     def test_rewrite(self):
         f1 = FST.re("$^rewrite((ab):x / a b _ a)")
         self.assertEqual(set(f1.generate("abababa")), {"abxxa"})
@@ -124,6 +126,7 @@ class TestFST(unittest.TestCase):
 
 
 class TestSymbols(unittest.TestCase):
+    """Test multi-character symbol feature"""
     MULTICHAR_SYMBOLS = "u: ch ll x̌ʷ".split()
 
     def test_rlg(self):
@@ -199,6 +202,83 @@ class TestSymbols(unittest.TestCase):
                          multichar_symbols=self.MULTICHAR_SYMBOLS)
         self.assertEqual("xu:x", next(rule.generate("xu:x̌ʷ")))
         self.assertEqual("xux̌ʷ", next(rule.generate("xux̌ʷ")))
+
+
+class TestUtil(unittest.TestCase):
+    """Test utility functions."""
+    fst = FST.regex(r"'[NO\'UN]' '[VERB]' (cat):(dog)? 'ROTFLMAO🤣'")
+
+    def verify_att_format(self, att, epsilon="@0@"):
+        """Verify some expected states and such in AT&T FST"""
+        self.assertIn("[NO'UN]\t[NO'UN]", att)
+        self.assertIn("[VERB]\t[VERB]", att)
+        self.assertIn(f"c\t{epsilon}", att)
+        self.assertIn(f"a\t{epsilon}", att)
+        self.assertIn(f"t\t{epsilon}", att)
+        self.assertIn("c\td", att)
+        self.assertIn("a\to", att)
+        self.assertIn("t\tg", att)
+
+    def test_to_str(self):
+        """Test simple AT&T format conversion."""
+        att = str(self.fst)
+        self.verify_att_format(att)
+
+    def test_to_att(self):
+        """Test more complete AT&T format conversion."""
+        with TemporaryDirectory() as tempdir:
+            path = Path(tempdir)
+            f = self.fst
+            # Verify expected path behaviour
+            f.save_att(path / "test")
+            self.assertTrue((path / "test").exists())
+            self.assertTrue((path / "test.isyms").exists())
+            self.assertTrue((path / "test.osyms").exists())
+            f.save_att(path / "test.att", epsilon="<eps>")
+            self.assertTrue((path / "test.att").exists())
+            self.assertTrue((path / "test.isyms").exists())
+            self.assertTrue((path / "test.osyms").exists())
+            # Now verify contents
+            with open(path / "test.att", "rt") as infh:
+                att = infh.read()
+                self.verify_att_format(att, epsilon="<eps>")
+                # If you have OpenFST you can verify this with:
+                #   fstcompile --isymbols=test.isyms \
+                #      --osymbols=test.osyms --keep_isymbols \
+                #      --keep_osymbols --keep_state_numbering \
+                #      test.att  | fstprint
+            # Check state symbols get output too
+            f = FST.rlg({"Root": [("", "Sublex")],
+                         "Sublex": [(("foo", "bar"), "#")]}, "Root")
+            f.save_att(path / "test_st.fst", state_symbols=True)
+            self.assertTrue((path / "test_st.fst").exists())
+            self.assertTrue((path / "test_st.isyms").exists())
+            self.assertTrue((path / "test_st.osyms").exists())
+            self.assertTrue((path / "test_st.ssyms").exists())
+            with open(path / "test_st.fst", "rt") as infh:
+                att = infh.read()
+                self.assertIn("Root\tSublex\t@0@\t@0@", att)
+                self.assertIn("#\n", att)
+                # If you have OpenFST you can verify this with:
+                #   fstcompile --ssymbols=test_st.ssyms \
+                #      --isymbols=test_st.isyms \
+                #      --osymbols=test_st.osyms --keep_isymbols \
+                #      --keep_osymbols --keep_state_numbering \
+                #      test_st.fst | fstprint
+
+    def test_to_js_on(self):
+        d = self.fst.todict()
+        # Sensible Python definition of "character"
+        # len('ROTFLMAO🤣') == 9
+        self.assertEqual(d["maxlen"], 9)
+        # Nonsense Java(script)? definition of "character"
+        # 'ROTFLMAO🤣'.length === 10
+        d = self.fst.todict(utf16_maxlen=True)
+        self.assertEqual(d["maxlen"], 10)
+        js = self.fst.tojs()
+        self.assertIn('"maxlen": 10', js)
+        # As to whether the Javascript is correct... you're on your
+        # own (don't ask the browser)
 
 
 if __name__ == "__main__":
