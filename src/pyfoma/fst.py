@@ -320,9 +320,15 @@ class FST:
         for s in self.states:
             if len(s.transitions) > 0:
                 for label in s.transitions.keys():
+                    if len(label) == 1:
+                        att_label = (label[0], label[0])
+                    else:
+                        att_label = label
+                    # You get Foma's default here since it cannot be configured
+                    att_label = ["@0@" if sym == "" else sym for sym in att_label]
                     for transition in s.transitions[label]:
                         st += '{}\t{}\t{}\t{}\n'.format(statenums[id(s)],\
-                        statenums[id(transition.targetstate)], '\t'.join(label),\
+                        statenums[id(transition.targetstate)], '\t'.join(att_label),\
                         transition.weight)
         for s in self.states:
             if s in self.finalstates:
