@@ -33,3 +33,8 @@ include = [
     "/src",
 ]
 
+[tool.hatch.envs.hatch-test]
+dependencies = [
+    "pytest",
+    "coverage",
+]
