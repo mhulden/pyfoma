@@ -1,4 +1,7 @@
+import json
+import re
 import unittest
+from collections import deque
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from pyfoma import algorithms
@@ -267,19 +270,45 @@ class TestUtil(unittest.TestCase):
                 #      test_st.fst | fstprint
 
     def test_to_js_on(self):
+        # Has no maxlen anymore, downstream code should do that
         d = self.fst.todict()
-        # Sensible Python definition of "character"
-        # len('ROTFLMAO🤣') == 9
-        self.assertEqual(d["maxlen"], 9)
-        # Nonsense Java(script)? definition of "character"
-        # 'ROTFLMAO🤣'.length === 10
-        d = self.fst.todict(utf16_maxlen=True)
-        self.assertEqual(d["maxlen"], 10)
+        self.assertIn(0, d["transitions"])
+        self.assertEqual(1, len(d["finals"]))
         js = self.fst.tojs()
         self.assertIn('"maxlen": 10', js)
-        # As to whether the Javascript is correct... you're on your
-        # own (don't ask the browser)
-
+        self.assertIn(""""0|[NO'UN]": [{""", js)
+        # Ensure the JavaScript is the same FST
+        js_dict = re.sub(r"^var \w+ = (.*);", r"\1", js)
+        js_json = json.loads(js_dict)
+        self.assertIn(str(next(iter(d["finals"]))), js_json["f"])
+        self.assertEqual(d["alphabet"], js_json["s"])
+        for src, out in d["transitions"].items():
+            for label, arcs in out.items():
+                syms = re.split(r"(?<!\\)\|", label)
+                self.assertIn(f"{src}|{syms[0]}", js_json["t"])
+                for arc in arcs:
+                    self.assertIn({str(arc): syms[-1]},
+                                  js_json["t"][f"{src}|{syms[0]}"])
+        # Compare with output of foma2js.py, sort of (it has various
+        # issues, which have been fixed then dumped to JSON)
+        with open("test_foma.json", "rt") as infh:
+            foma_json = json.load(infh)
+            self.assertEqual(js_json["s"].keys(), foma_json["s"].keys())
+            Q = deque([(0, 0)])
+            while Q:
+                src, jsrc = Q.popleft()
+                if src in d["finals"]:
+                    self.assertIn(jsrc, foma_json["f"])
+                if src not in d["transitions"]:
+                    continue
+                for label in d["transitions"][src]:
+                    syms = re.split(r"(?<!\\)\|", label)
+                    for arc in d["transitions"][src][label]:
+                        for jarc in foma_json["t"][f"{jsrc}|{syms[0]}"]:
+                            for jdst, jsym in jarc.items():
+                                if jsym != syms[-1]:
+                                    continue
+                                Q.append((arc, jdst)) 
 
 if __name__ == "__main__":
     unittest.main()

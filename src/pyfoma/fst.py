@@ -594,10 +594,9 @@ class FST:
             start += len(t)
         return tokens
 
-    def todict(self, utf16_maxlen=False) -> Dict[str, Any]:
+    def todict(self) -> Dict[str, Any]:
         """Create a dictionary form of the FST for export to
-        JSON/Javascript.  If it will ultimately be used by Javascript,
-        pass `utf16_maxlen=True`."""
+        JSON.  May be post-processed for optimization in Javascript."""
         # (re-)number all the states making sure the initial state is 0
         # (the Javascript code depends on this, all other state numbers
         # are arbitrary strings)
@@ -623,38 +622,55 @@ class FST:
                     if sym == "":
                         continue
                     if sym not in alphabet:
-                        # Reserve 0, 1, 2 for epsilon, identity, unknown
+                        # Reserve 0, 1, 2 for epsilon, identity,
+                        # unknown (actually not necessary)
                         alphabet[sym] = 3 + len(alphabet)
-                        # For Javascript we will recompute this based on
-                        # evil UTF-16
                         maxlen = max(maxlen, len(sym))
+                    sym = pyre.sub(r"\?|", r"\|", sym)
+                tlabel = isym if isym == osym else f"{isym}|{osym}"
                 # Nothing to do to the symbols beyond that as pyfoma
                 # already uses the same convention of epsilon='', and JSON
                 # encoding will take care of escaping everything for us
-                transitions.setdefault(f"{src}|{isym}", []).extend(
-                    # Note, weights are ignored...
-                    {statenums[id(arc.targetstate)]: osym} for arc in arcs
+                transitions.setdefault(src, {}).setdefault(tlabel, []).extend(
+                    # Ignore weights for now (but will support soon)
+                    statenums[id(arc.targetstate)] for arc in arcs
                 )
             if s in self.finalstates:
                 finals[src] = 1
-        if utf16_maxlen:
-            # Note utf-16le because we do not want a valuable BOM
-            maxlen = max(len(k.encode('utf-16le')) for k in alphabet) // 2
         return {
-            "t": transitions,
-            "s": alphabet,
-            "f": finals,
-            "maxlen": maxlen,
+            "transitions": transitions,
+            "alphabet": alphabet,
+            "finals": finals,
         }
 
-    def tojson(self, utf16_maxlen=False) -> str:
-        """Create JSON (which is also Javascript) for an FST for use with
-        `foma_apply_down.js`"""
-        return json.dumps(self.todict(utf16_maxlen=utf16_maxlen), ensure_ascii=False)
-
     def tojs(self, jsnetname: str = "myNet") -> str:
-        """Create Javascript compatible with `foma2js.perl`"""
-        return " ".join(("var", jsnetname, "=", self.tojson(utf16_maxlen=True), ";"))
+        """Create Javascript compatible with `foma_apply_down.js`"""
+        fstdict = self.todict()
+        # Optimize for foma_apply_down.js
+        transitions = {}
+        for src, out in fstdict["transitions"].items():
+            for label, arcs in out.items():
+                syms = pyre.split(r"(?<!\\)\|", label)
+                isym = syms[0]
+                osym = syms[-1]
+                transitions.setdefault(f"{src}|{isym}", []).extend(
+                    # NOTE: There is no reason for these to be
+                    # separate objects, but foma_apply_down.js wants
+                    # them that way.
+                    {arc: osym} for arc in arcs
+                )
+        # NOTE: in reality foma_apply_down.js only needs the *input*
+        # symbols, so we could further optimize this.
+        fstdict["s"] = fstdict["alphabet"]
+        del fstdict["alphabet"]
+        fstdict["maxlen"] = max(len(k.encode('utf-16le'))
+                                for k in fstdict["s"]) // 2
+        fstdict["f"] = fstdict["finals"]
+        del fstdict["finals"]
+        fstdict["t"] = transitions
+        del fstdict["transitions"]
+        return " ".join(("var", jsnetname, "=",
+                         json.dumps(fstdict, ensure_ascii=False), ";"))
     # endregion
 
 
