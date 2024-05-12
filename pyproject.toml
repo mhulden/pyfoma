@@ -18,7 +18,6 @@ classifiers = [
 ]
 dependencies = [
     "graphviz",
-    "IPython",
 ]
 
 [project.urls]
@@ -31,6 +30,11 @@ path = "src/pyfoma/__init__.py"
 [tool.hatch.build.targets.sdist]
 include = [
     "/src",
+]
+
+[tool.hatch.envs.default]
+dependencies = [
+    "IPython",
 ]
 
 [tool.hatch.envs.hatch-test]
