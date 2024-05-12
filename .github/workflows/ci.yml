@@ -21,4 +21,3 @@ jobs:
       - name: Run tests with pytest
         run: |
           hatch test --all
-
