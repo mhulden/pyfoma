@@ -1,0 +1,25 @@
+var myNet = new Object;
+myNet.t = new Object;
+myNet.f = new Object;
+myNet.s = new Object;
+
+myNet.t[4 + '|' + 't'] = [{7:'g'}];
+myNet.t[2 + '|' + 'c'] = [{5:''},{3:'d'}];
+myNet.t[5 + '|' + 'a'] = [{6:''}];
+myNet.t[7 + '|' + 'ROTFLMAO🤣'] = [{8:'ROTFLMAO🤣'}];
+myNet.t[6 + '|' + 't'] = [{7:''}];
+myNet.t[3 + '|' + 'a'] = [{4:'o'}];
+myNet.t[0 + '|' + '[NO\'UN]'] = [{1:'[NO\'UN]'}];
+myNet.t[1 + '|' + '[VERB]'] = [{2:'[VERB]'}];
+myNet.f[8] = 1;
+myNet.s['ROTFLMAO🤣'] = 3;
+myNet.s['[NO\'UN]'] = 4;
+myNet.s['[VERB]'] = 5;
+myNet.s['a'] = 6;
+myNet.s['c'] = 7;
+myNet.s['d'] = 8;
+myNet.s['g'] = 9;
+myNet.s['o'] = 10;
+myNet.s['t'] = 11;
+myNet.maxlen = 9 ;
+module.exports = myNet;
