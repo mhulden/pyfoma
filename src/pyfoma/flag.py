@@ -15,7 +15,7 @@ FLAGRE3=r"\[\[([!]?)(\$\w+)\]\]"
 
 class FlagOp:
     def __init__(self, sym: str):
-        """Creates a Flag diacritic
+        r"""Creates a Flag diacritic
 
         :param sym: String representation of flag diacritic 
 

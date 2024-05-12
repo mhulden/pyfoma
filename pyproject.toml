@@ -1,3 +1,47 @@
 [build-system]
-requires = ['setuptools>=42']
-build-backend = 'setuptools.build_meta'
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pyfoma"
+dynamic = ["version"]
+description = "Python Finite-State Toolkit"
+readme = "README.md"
+requires-python = ">=3.6"
+authors = [
+    { name = "Mans Hulden", email = "mans.hulden@colorado.edu" },
+]
+classifiers = [
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+]
+dependencies = [
+    "graphviz",
+]
+
+[project.urls]
+"Bug Tracker" = "https://github.com/mhulden/pyfoma/issues"
+Homepage = "https://github.com/mhulden/pyfoma"
+
+[tool.hatch.version]
+path = "src/pyfoma/__init__.py"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+]
+
+[tool.hatch.envs.default]
+dependencies = [
+    "IPython",
+]
+
+[tool.hatch.envs.hatch-test]
+dependencies = [
+    "pytest",
+    "coverage",
+]
+
+[[tool.hatch.envs.hatch-test.matrix]]
+python = ["3.7", "3.8", "3.9", "3.10", "3.11", "3.12"]

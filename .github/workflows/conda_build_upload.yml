@@ -30,9 +30,7 @@ jobs:
       - name: Install Anaconda CLI
         run: conda install anaconda-client
       - name: Create spooky skeleton
-        run: conda skeleton pypi pyfoma
-      - name: Add noarch to the package
-        run: 'sed -i "" "s/build:/build:\n  noarch: python/" pyfoma/meta.yaml'
+        run: conda skeleton pypi --version $(hatch version) --noarch-python pyfoma
       - name: Build the package from the skeleton
         run: conda-build pyfoma --output-folder build
       - name: Upload to conda
