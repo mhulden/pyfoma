@@ -204,7 +204,7 @@ class FST:
             fst = pickle.load(f)
         return fst
 
-    def save_att(self, base: PathLike[str], state_symbols=False, epsilon="@0@"):
+    def save_att(self, base: PathLike, state_symbols=False, epsilon="@0@"):
         """Save to AT&T format files for use with other FST libraries
         (Foma, OpenFST, RustFST, HFST, etc).
 
