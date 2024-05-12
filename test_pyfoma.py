@@ -289,11 +289,14 @@ class TestUtil(unittest.TestCase):
                 for arc in arcs:
                     self.assertIn({str(arc): syms[-1]},
                                   js_json["t"][f"{src}|{syms[0]}"])
-        # Compare with output of foma2js.py, sort of (it has various
+        # Compare with output of foma2js.perl, sort of (it has various
         # issues, which have been fixed then dumped to JSON)
         with open("test_foma.json", "rt") as infh:
             foma_json = json.load(infh)
             self.assertEqual(js_json["s"].keys(), foma_json["s"].keys())
+            # We are not bug-compatible (foma2js.perl has 9, but
+            # that's not the actual length of 'ROTFLMAO🤣' in UTF-16)
+            self.assertEqual(10, js_json["maxlen"])
             Q = deque([(0, 0)])
             while Q:
                 src, jsrc = Q.popleft()
