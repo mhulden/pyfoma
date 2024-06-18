@@ -203,6 +203,12 @@ class TestSymbols(unittest.TestCase):
         self.assertEqual("xu:x", next(rule.generate("xu:x̌ʷ")))
         self.assertEqual("xux̌ʷ", next(rule.generate("xux̌ʷ")))
 
+    def test_longest_match(self):
+        """Verify that longest multichar symbols are matched"""
+        rule = FST.regex("$^rewrite(ABC:D)",
+                         multichar_symbols=["A", "B", "C", "AB", "ABC"])
+        self.assertEqual("ABD", next(rule.generate("ABABC")))
+
 
 class TestUtil(unittest.TestCase):
     """Test utility functions."""
