@@ -4,7 +4,7 @@
 
 import heapq, json, itertools, operator, re as pyre
 from collections import deque, defaultdict
-from typing import Callable, Dict, Any, Iterable, TextIO
+from typing import Callable, Dict, Any, Iterable, List, TextIO
 from os import PathLike
 from pathlib import Path
 from pyfoma.flag import FlagStringFilter, FlagOp
@@ -237,8 +237,8 @@ class FST:
         # Number states and create state symbol table (see
         # todict() for why we must do this in a repeatable way)
         q = deque([self.initialstate])
-        states = []
-        ssyms = []
+        states: List[State] = []
+        ssyms: List[str] = []
         ssymtab = {}
         while q:
             state = q.popleft()
@@ -616,7 +616,7 @@ class FST:
         #    different state numberings and thus different JSON unless we
         #    enforce an ordering on them here.
         q = deque([self.initialstate])
-        states = []
+        states: List[State] = []
         statenums = {}
         while q:
             state = q.popleft()
@@ -633,9 +633,9 @@ class FST:
                 for arc in arcs:
                     if id(arc.targetstate) not in statenums:
                         q.append(arc.targetstate)
-        transitions = {}
+        transitions: Dict[int, Dict[str, List[int]]] = {}
         finals = {}
-        alphabet = {}
+        alphabet: Dict[str, int] = {}
         for src, state in enumerate(states):
             for label, arcs in sorted(state.transitions.items(), key=operator.itemgetter(0)):
                 if len(label) == 1:
