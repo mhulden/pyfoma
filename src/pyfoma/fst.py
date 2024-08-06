@@ -227,26 +227,37 @@ class FST:
         retained in the output file and a state symbol table created
         with the extension `.ssyms`.  This option is disabled by
         default since it is not compatible with Foma.
+
+        Note also that unreachable states are not inclued in the output.
         """
         path = Path(base)
         ssympath = path.with_suffix(".ssyms")
         isympath = path.with_suffix(".isyms")
         osympath = path.with_suffix(".osyms")
-        # Number all states and create state symbol table
-        if state_symbols:
-            ssyms = [self.initialstate.name]
-        else:
-            ssyms = ["0"]
-        ssymtab = {id(self.initialstate): ssyms[0]}
-        for s in self.states:
-            if s == self.initialstate:
-                continue
-            if s.name is None or not state_symbols:
+        # Number states and create state symbol table (see
+        # todict() for why we must do this in a repeatable way)
+        q = deque([self.initialstate])
+        states = []
+        ssyms = []
+        ssymtab = {}
+        while q:
+            state = q.popleft()
+            if state.name is None or not state_symbols:
                 name = str(len(ssyms))
             else:
-                name = s.name
-            ssymtab[id(s)] = name
+                name = state.name
+            ssymtab[id(state)] = name
             ssyms.append(name)
+            states.append(state)
+            # Make sure to sort here too as the order of insertion will
+            # vary as a consequence of different ordering of states
+            for label, arcs in sorted(state.transitions.items(),
+                                      key=operator.itemgetter(0)):
+                # FIXME: it is not possible to guarantee the ordering
+                # here.  Consider not using `set` for arcs.
+                for arc in arcs:
+                    if id(arc.targetstate) not in ssymtab:
+                        q.append(arc.targetstate)
         if state_symbols:
             with open(ssympath, "wt") as outfh:
                 for idx, name in enumerate(ssyms):
@@ -258,7 +269,8 @@ class FST:
 
         def output_state(s: State, outfh: TextIO):
             name = ssymtab[id(s)]
-            for label, arcs in s.transitions.items():
+            for label, arcs in sorted(state.transitions.items(),
+                                      key=operator.itemgetter(0)):
                 if len(label) == 1:
                     isym = osym = (label[0] or epsilon)
                 else:
@@ -287,10 +299,8 @@ class FST:
                     print(name, file=outfh)
 
         with open(path, "wt") as outfh:
-            output_state(self.initialstate, outfh)
-            for s in self.states:
-                if s != self.initialstate:
-                    output_state(s, outfh)
+            for state in states:
+                output_state(state, outfh)
         with open(isympath, "wt") as outfh:
             for name, idx in isyms.items():
                 print(f"{name}\t{idx}", file=outfh)
@@ -618,6 +628,8 @@ class FST:
             # vary as a consequence of different ordering of states
             for label, arcs in sorted(state.transitions.items(),
                                       key=operator.itemgetter(0)):
+                # FIXME: it is not possible to guarantee the ordering
+                # here.  Consider not using `set` for arcs.
                 for arc in arcs:
                     if id(arc.targetstate) not in statenums:
                         q.append(arc.targetstate)
