@@ -255,7 +255,7 @@ class FST:
                                       key=operator.itemgetter(0)):
                 # FIXME: it is not possible to guarantee the ordering
                 # here.  Consider not using `set` for arcs.
-                for arc in arcs:
+                for arc in sorted(arcs, key=operator.attrgetter("weight")):
                     if id(arc.targetstate) not in ssymtab:
                         q.append(arc.targetstate)
         if state_symbols:
@@ -279,7 +279,7 @@ class FST:
                     isyms[isym] = len(isyms)
                 if osym not in osyms:
                     osyms[osym] = len(osyms)
-                for transition in arcs:
+                for transition in sorted(arcs, key=operator.attrgetter("weight")):
                     dest = ssymtab[id(transition.targetstate)]
                     fields = [
                         name,
@@ -630,7 +630,7 @@ class FST:
                                       key=operator.itemgetter(0)):
                 # FIXME: it is not possible to guarantee the ordering
                 # here.  Consider not using `set` for arcs.
-                for arc in arcs:
+                for arc in sorted(arcs, key=operator.attrgetter("weight")):
                     if id(arc.targetstate) not in statenums:
                         q.append(arc.targetstate)
         transitions: Dict[int, Dict[str, List[int]]] = {}
@@ -655,7 +655,7 @@ class FST:
                 # Nothing to do to the symbols beyond that as pyfoma
                 # already uses the same convention of epsilon='', and JSON
                 # encoding will take care of escaping everything for us.
-                for arc in arcs:
+                for arc in sorted(arcs, key=operator.attrgetter("weight")):
                     transitions.setdefault(src, {}).setdefault(tlabel, []).append(
                         # Ignore weights for now (but will support soon)
                         statenums[id(arc.targetstate)]
