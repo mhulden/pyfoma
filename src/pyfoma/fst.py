@@ -2,7 +2,7 @@
 
 """PyFoma Finite-State Tool."""
 
-import heapq, json, itertools, re as pyre
+import heapq, json, itertools, operator, re as pyre
 from collections import deque, defaultdict
 from typing import Callable, Dict, Any, Iterable, TextIO
 from os import PathLike
@@ -597,22 +597,35 @@ class FST:
     def todict(self) -> Dict[str, Any]:
         """Create a dictionary form of the FST for export to
         JSON.  May be post-processed for optimization in Javascript."""
-        # (re-)number all the states making sure the initial state is 0
-        # (the Javascript code depends on this, all other state numbers
-        # are arbitrary strings)
-        statenums = {id(self.initialstate): 0}
-        for s in self.states:
-            if s == self.initialstate:
+        # Traverse, renumbering all the states, because:
+        # 1. It removes unreachable states and saves space/bandwidth
+        # 2. The JS code requires the initial state to have number 0
+        # 3. pyfoma uses a `set` to store states, and sets are not
+        #    order-preserving in Python, while dicts are, so two FSTs
+        #    created with the same input to `FST.regex` will end up with
+        #    different state numberings and thus different JSON unless we
+        #    enforce an ordering on them here.
+        q = deque([self.initialstate])
+        states = []
+        statenums = {}
+        while q:
+            state = q.popleft()
+            if id(state) in statenums:
                 continue
-            statenums[id(s)] = len(statenums)
-        # No need to hold out the initial state since it has number 0
+            statenums[id(state)] = len(states)
+            states.append(state)
+            # Make sure to sort here too as the order of insertion will
+            # vary as a consequence of different ordering of states
+            for label, arcs in sorted(state.transitions.items(),
+                                      key=operator.itemgetter(0)):
+                for arc in arcs:
+                    if id(arc.targetstate) not in statenums:
+                        q.append(arc.targetstate)
         transitions = {}
         finals = {}
         alphabet = {}
-        maxlen = 0
-        for s in self.states:
-            src = statenums[id(s)]
-            for label, arcs in s.transitions.items():
+        for src, state in enumerate(states):
+            for label, arcs in sorted(state.transitions.items(), key=operator.itemgetter(0)):
                 if len(label) == 1:
                     isym = osym = label[0]
                 else:
@@ -622,20 +635,20 @@ class FST:
                     if sym == "":
                         continue
                     if sym not in alphabet:
-                        # Reserve 0, 1, 2 for epsilon, identity,
-                        # unknown (actually not necessary)
+                        # Reserve 0, 1, 2 for epsilon, identity, unknown
+                        # (actually not necessary)
                         alphabet[sym] = 3 + len(alphabet)
-                        maxlen = max(maxlen, len(sym))
                     sym = pyre.sub(r"\?|", r"\|", sym)
                 tlabel = isym if isym == osym else f"{isym}|{osym}"
                 # Nothing to do to the symbols beyond that as pyfoma
                 # already uses the same convention of epsilon='', and JSON
-                # encoding will take care of escaping everything for us
-                transitions.setdefault(src, {}).setdefault(tlabel, []).extend(
-                    # Ignore weights for now (but will support soon)
-                    statenums[id(arc.targetstate)] for arc in arcs
-                )
-            if s in self.finalstates:
+                # encoding will take care of escaping everything for us.
+                for arc in arcs:
+                    transitions.setdefault(src, {}).setdefault(tlabel, []).append(
+                        # Ignore weights for now (but will support soon)
+                        statenums[id(arc.targetstate)]
+                    )
+            if state in self.finalstates:
                 finals[src] = 1
         return {
             "transitions": transitions,

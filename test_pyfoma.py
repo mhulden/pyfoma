@@ -269,6 +269,19 @@ class TestUtil(unittest.TestCase):
                 #      --keep_osymbols --keep_state_numbering \
                 #      test_st.fst | fstprint
 
+    def test_todict(self):
+        """Ensure that json is the same for equivalent FSTs"""
+        rx = (r"""
+        $^rewrite(s:(s | 'š')
+            | c:(c | 'č')
+            | \?:Ɂ
+            | 7:Ɂ
+            | ʔ:Ɂ)
+        """)
+        fst1 = FST.regex(rx)
+        fst2 = FST.regex(rx)
+        assert json.dumps(fst1.todict()) == json.dumps(fst2.todict())
+
     def test_to_js_on(self):
         # Has no maxlen anymore, downstream code should do that
         d = self.fst.todict()
