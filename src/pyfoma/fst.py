@@ -276,7 +276,7 @@ class FST:
                         osym,
                     ]
                     if transition.weight != 0.0:
-                        fields.append(transition.weight)
+                        fields.append(str(transition.weight))
                     print("\t".join(fields), file=outfh)
             # NOTE: These are not required to be at the end of the file
             if s in self.finalstates:

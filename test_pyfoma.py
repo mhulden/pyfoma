@@ -206,7 +206,7 @@ class TestSymbols(unittest.TestCase):
 
 class TestUtil(unittest.TestCase):
     """Test utility functions."""
-    fst = FST.regex(r"'[NO\'UN]' '[VERB]' (cat):(dog)? 'ROTFLMAO🤣'")
+    fst = FST.regex(r"'[NO\'UN]' '[VERB]'<1> (cat):(dog)? 'ROTFLMAO🤣'")
 
     def verify_att_format(self, att, epsilon="@0@"):
         """Verify some expected states and such in AT&T FST"""
