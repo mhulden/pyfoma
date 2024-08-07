@@ -2,9 +2,9 @@
 
 """PyFoma Finite-State Tool."""
 
-import heapq, json, itertools, re as pyre
+import heapq, json, itertools, operator, re as pyre
 from collections import deque, defaultdict
-from typing import Callable, Dict, Any, Iterable, TextIO
+from typing import Callable, Dict, Any, Iterable, List, TextIO
 from os import PathLike
 from pathlib import Path
 from pyfoma.flag import FlagStringFilter, FlagOp
@@ -204,7 +204,7 @@ class FST:
             fst = pickle.load(f)
         return fst
 
-    def save_att(self, base: PathLike[str], state_symbols=False, epsilon="@0@"):
+    def save_att(self, base: PathLike, state_symbols=False, epsilon="@0@"):
         """Save to AT&T format files for use with other FST libraries
         (Foma, OpenFST, RustFST, HFST, etc).
 
@@ -227,26 +227,37 @@ class FST:
         retained in the output file and a state symbol table created
         with the extension `.ssyms`.  This option is disabled by
         default since it is not compatible with Foma.
+
+        Note also that unreachable states are not inclued in the output.
         """
         path = Path(base)
         ssympath = path.with_suffix(".ssyms")
         isympath = path.with_suffix(".isyms")
         osympath = path.with_suffix(".osyms")
-        # Number all states and create state symbol table
-        if state_symbols:
-            ssyms = [self.initialstate.name]
-        else:
-            ssyms = ["0"]
-        ssymtab = {id(self.initialstate): ssyms[0]}
-        for s in self.states:
-            if s == self.initialstate:
-                continue
-            if s.name is None or not state_symbols:
+        # Number states and create state symbol table (see
+        # todict() for why we must do this in a repeatable way)
+        q = deque([self.initialstate])
+        states: List[State] = []
+        ssyms: List[str] = []
+        ssymtab = {}
+        while q:
+            state = q.popleft()
+            if state.name is None or not state_symbols:
                 name = str(len(ssyms))
             else:
-                name = s.name
-            ssymtab[id(s)] = name
+                name = state.name
+            ssymtab[id(state)] = name
             ssyms.append(name)
+            states.append(state)
+            # Make sure to sort here too as the order of insertion will
+            # vary as a consequence of different ordering of states
+            for label, arcs in sorted(state.transitions.items(),
+                                      key=operator.itemgetter(0)):
+                # FIXME: it is not possible to guarantee the ordering
+                # here.  Consider not using `set` for arcs.
+                for arc in sorted(arcs, key=operator.attrgetter("weight")):
+                    if id(arc.targetstate) not in ssymtab:
+                        q.append(arc.targetstate)
         if state_symbols:
             with open(ssympath, "wt") as outfh:
                 for idx, name in enumerate(ssyms):
@@ -258,7 +269,8 @@ class FST:
 
         def output_state(s: State, outfh: TextIO):
             name = ssymtab[id(s)]
-            for label, arcs in s.transitions.items():
+            for label, arcs in sorted(state.transitions.items(),
+                                      key=operator.itemgetter(0)):
                 if len(label) == 1:
                     isym = osym = (label[0] or epsilon)
                 else:
@@ -267,7 +279,7 @@ class FST:
                     isyms[isym] = len(isyms)
                 if osym not in osyms:
                     osyms[osym] = len(osyms)
-                for transition in arcs:
+                for transition in sorted(arcs, key=operator.attrgetter("weight")):
                     dest = ssymtab[id(transition.targetstate)]
                     fields = [
                         name,
@@ -287,10 +299,8 @@ class FST:
                     print(name, file=outfh)
 
         with open(path, "wt") as outfh:
-            output_state(self.initialstate, outfh)
-            for s in self.states:
-                if s != self.initialstate:
-                    output_state(s, outfh)
+            for state in states:
+                output_state(state, outfh)
         with open(isympath, "wt") as outfh:
             for name, idx in isyms.items():
                 print(f"{name}\t{idx}", file=outfh)
@@ -594,26 +604,40 @@ class FST:
             start += len(t)
         return tokens
 
-    def todict(self, utf16_maxlen=False) -> Dict[str, Any]:
+    def todict(self) -> Dict[str, Any]:
         """Create a dictionary form of the FST for export to
-        JSON/Javascript.  If it will ultimately be used by Javascript,
-        pass `utf16_maxlen=True`."""
-        # (re-)number all the states making sure the initial state is 0
-        # (the Javascript code depends on this, all other state numbers
-        # are arbitrary strings)
-        statenums = {id(self.initialstate): 0}
-        for s in self.states:
-            if s == self.initialstate:
+        JSON.  May be post-processed for optimization in Javascript."""
+        # Traverse, renumbering all the states, because:
+        # 1. It removes unreachable states and saves space/bandwidth
+        # 2. The JS code requires the initial state to have number 0
+        # 3. pyfoma uses a `set` to store states, and sets are not
+        #    order-preserving in Python, while dicts are, so two FSTs
+        #    created with the same input to `FST.regex` will end up with
+        #    different state numberings and thus different JSON unless we
+        #    enforce an ordering on them here.
+        q = deque([self.initialstate])
+        states: List[State] = []
+        statenums = {}
+        while q:
+            state = q.popleft()
+            if id(state) in statenums:
                 continue
-            statenums[id(s)] = len(statenums)
-        # No need to hold out the initial state since it has number 0
-        transitions = {}
+            statenums[id(state)] = len(states)
+            states.append(state)
+            # Make sure to sort here too as the order of insertion will
+            # vary as a consequence of different ordering of states
+            for label, arcs in sorted(state.transitions.items(),
+                                      key=operator.itemgetter(0)):
+                # FIXME: it is not possible to guarantee the ordering
+                # here.  Consider not using `set` for arcs.
+                for arc in sorted(arcs, key=operator.attrgetter("weight")):
+                    if id(arc.targetstate) not in statenums:
+                        q.append(arc.targetstate)
+        transitions: Dict[int, Dict[str, List[int]]] = {}
         finals = {}
-        alphabet = {}
-        maxlen = 0
-        for s in self.states:
-            src = statenums[id(s)]
-            for label, arcs in s.transitions.items():
+        alphabet: Dict[str, int] = {}
+        for src, state in enumerate(states):
+            for label, arcs in sorted(state.transitions.items(), key=operator.itemgetter(0)):
                 if len(label) == 1:
                     isym = osym = label[0]
                 else:
@@ -624,37 +648,54 @@ class FST:
                         continue
                     if sym not in alphabet:
                         # Reserve 0, 1, 2 for epsilon, identity, unknown
+                        # (actually not necessary)
                         alphabet[sym] = 3 + len(alphabet)
-                        # For Javascript we will recompute this based on
-                        # evil UTF-16
-                        maxlen = max(maxlen, len(sym))
+                    sym = pyre.sub(r"\?|", r"\|", sym)
+                tlabel = isym if isym == osym else f"{isym}|{osym}"
                 # Nothing to do to the symbols beyond that as pyfoma
                 # already uses the same convention of epsilon='', and JSON
-                # encoding will take care of escaping everything for us
-                transitions.setdefault(f"{src}|{isym}", []).extend(
-                    # Note, weights are ignored...
-                    {statenums[id(arc.targetstate)]: osym} for arc in arcs
-                )
-            if s in self.finalstates:
+                # encoding will take care of escaping everything for us.
+                for arc in sorted(arcs, key=operator.attrgetter("weight")):
+                    transitions.setdefault(src, {}).setdefault(tlabel, []).append(
+                        # Ignore weights for now (but will support soon)
+                        statenums[id(arc.targetstate)]
+                    )
+            if state in self.finalstates:
                 finals[src] = 1
-        if utf16_maxlen:
-            # Note utf-16le because we do not want a valuable BOM
-            maxlen = max(len(k.encode('utf-16le')) for k in alphabet) // 2
         return {
-            "t": transitions,
-            "s": alphabet,
-            "f": finals,
-            "maxlen": maxlen,
+            "transitions": transitions,
+            "alphabet": alphabet,
+            "finals": finals,
         }
 
-    def tojson(self, utf16_maxlen=False) -> str:
-        """Create JSON (which is also Javascript) for an FST for use with
-        `foma_apply_down.js`"""
-        return json.dumps(self.todict(utf16_maxlen=utf16_maxlen), ensure_ascii=False)
-
     def tojs(self, jsnetname: str = "myNet") -> str:
-        """Create Javascript compatible with `foma2js.perl`"""
-        return " ".join(("var", jsnetname, "=", self.tojson(utf16_maxlen=True), ";"))
+        """Create Javascript compatible with `foma_apply_down.js`"""
+        fstdict = self.todict()
+        # Optimize for foma_apply_down.js
+        transitions = {}
+        for src, out in fstdict["transitions"].items():
+            for label, arcs in out.items():
+                syms = pyre.split(r"(?<!\\)\|", label)
+                isym = syms[0]
+                osym = syms[-1]
+                transitions.setdefault(f"{src}|{isym}", []).extend(
+                    # NOTE: There is no reason for these to be
+                    # separate objects, but foma_apply_down.js wants
+                    # them that way.
+                    {arc: osym} for arc in arcs
+                )
+        # NOTE: in reality foma_apply_down.js only needs the *input*
+        # symbols, so we could further optimize this.
+        fstdict["s"] = fstdict["alphabet"]
+        del fstdict["alphabet"]
+        fstdict["maxlen"] = max(len(k.encode('utf-16le'))
+                                for k in fstdict["s"]) // 2
+        fstdict["f"] = fstdict["finals"]
+        del fstdict["finals"]
+        fstdict["t"] = transitions
+        del fstdict["transitions"]
+        return " ".join(("var", jsnetname, "=",
+                         json.dumps(fstdict, ensure_ascii=False), ";"))
     # endregion
 
 
