@@ -556,7 +556,7 @@ class FST:
         Q, output = [], []
         heapq.heappush(Q, (0.0, 0, next(cntr), [], self.initialstate))  # (cost, -pos, output, state)
         flag_filter = FlagStringFilter(self.alphabet) if obey_flags else None
-        
+
         while Q:
             cost, negpos, _, output, state = heapq.heappop(Q)
 
@@ -757,7 +757,7 @@ class State:
                 newt.pop(label)
         self.transitions = newt
 
-    def add_transition(self, other, label, weight):
+    def add_transition(self, other, label, weight=0):
         """Add transition from self to other with label and weight."""
         newtrans = Transition(other, label, weight)
         self.transitions[label] = self.transitions.get(label, set()) | {newtrans}
