@@ -4,7 +4,7 @@
 
 import heapq, json, itertools, operator, re as pyre
 from collections import deque, defaultdict
-from typing import Callable, Dict, Any, Iterable, List, TextIO
+from typing import Dict, Any, Iterable, List, TextIO, cast
 from os import PathLike
 from pathlib import Path
 from pyfoma.flag import FlagStringFilter, FlagOp
@@ -464,14 +464,18 @@ class FST:
                 g.edge(sourcelabel, targetlabel, label=graphviz.nohtml(printlabel))
         return g
 
-    def render(self, view=True, filename: str='FST', format='pdf'):
+    def render(self, view=True, filename: str='FST', format='pdf', tight=True):
         """
         Renders the FST to a file and optionally opens the file.
         :param view: If True, the rendered file will be opened.
         :param format: The file format for the Digraph. Typically 'pdf', 'png', or 'svg'. View all formats: https://graphviz.org/docs/outputs/
+        :param tight: If False, the rendered file will have whitespace margins around the graph.
         """
-        digraph = self.view()
+        import graphviz
+        digraph = cast(graphviz.Digraph, self.view())
         digraph.format = format
+        if tight:
+            digraph.graph_attr['margin'] = '0' # Remove padding
         digraph.render(view=view, filename=filename, cleanup=True)
 
     def all_transitions(self, states):
