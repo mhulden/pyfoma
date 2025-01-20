@@ -1,5 +1,6 @@
 import unittest
 from pyfoma.fst import FST
+from pyfoma.algorithms import trimmed, reversed
 
 class TestFST(unittest.TestCase):
 
@@ -69,6 +70,10 @@ class TestFST(unittest.TestCase):
         self.assertEqual(f1.alphabet, {"[NOUN]", "[VERB]"})
         f2 = FST.regex(r"'[NO\'UN]' '[VERB]'")
         self.assertEqual(f2.alphabet, {"[NO'UN]", "[VERB]"})
+
+    def test_reverse(self):
+        self.assertEqual(list(trimmed(reversed(FST.regex("abc"))).words()), 
+                         list(FST.regex("cba").words()))
 
 
 if __name__ == "__main__":
