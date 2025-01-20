@@ -227,6 +227,12 @@ class FST:
     def __matmul__(self, other):
         """Composition."""
         return self.compose(other)
+    
+    def __eq__(self, other: 'FST') -> bool:
+        return (self.states == other.states and
+                self.initialstate == other.initialstate and
+                self.finalstates == other.finalstates and
+                self.alphabet == other.alphabet)
 
     def become(self, other):
         """Hacky or what? We use this to mutate self for those algorithms that don't directly do it."""
