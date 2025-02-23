@@ -40,3 +40,8 @@ pip-delete-this-directory.txt
 
 .idea/
 .ipynb_checkpoints
+
+Demo
+*.afdesign
+.venv
+.vscode
