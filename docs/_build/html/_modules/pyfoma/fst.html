@@ -1,0 +1,995 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>pyfoma.fst &#8212; PyFoma 1.0.7 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="../../_static/basic.css?v=b08954a9" />
+    <link rel="stylesheet" type="text/css" href="../../_static/alabaster.css?v=27fed22d" />
+    <script src="../../_static/documentation_options.js?v=46dfa7f5"></script>
+    <script src="../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+   
+  <link rel="stylesheet" href="../../_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <h1>Source code for pyfoma.fst</h1><div class="highlight"><pre>
+<span></span><span class="ch">#!/usr/bin/env python</span>
+
+<span class="sd">&quot;&quot;&quot;PyFoma Finite-State Tool.&quot;&quot;&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">heapq</span><span class="o">,</span><span class="w"> </span><span class="nn">json</span><span class="o">,</span><span class="w"> </span><span class="nn">itertools</span><span class="o">,</span><span class="w"> </span><span class="nn">operator</span><span class="o">,</span><span class="w"> </span><span class="nn">re</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pyre</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">collections</span><span class="w"> </span><span class="kn">import</span> <span class="n">deque</span><span class="p">,</span> <span class="n">defaultdict</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Iterable</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">TextIO</span><span class="p">,</span> <span class="n">cast</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">os</span><span class="w"> </span><span class="kn">import</span> <span class="n">PathLike</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pyfoma.flag</span><span class="w"> </span><span class="kn">import</span> <span class="n">FlagStringFilter</span><span class="p">,</span> <span class="n">FlagOp</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">subprocess</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pickle</span>
+
+
+<div class="viewcode-block" id="re">
+<a class="viewcode-back" href="../../pyfoma.html#pyfoma.fst.re">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">re</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">FST</span><span class="o">.</span><span class="n">re</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_multichar_matcher</span><span class="p">(</span><span class="n">multichar_symbols</span><span class="p">:</span> <span class="n">Iterable</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">pyre</span><span class="o">.</span><span class="n">Pattern</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Create matcher for unquoted multichar symbols in lexicons and</span>
+<span class="sd">    regular expressions.&quot;&quot;&quot;</span>
+    <span class="n">ordered</span> <span class="o">=</span> <span class="p">[</span><span class="n">sym</span> <span class="k">for</span> <span class="n">sym</span> <span class="ow">in</span> <span class="n">multichar_symbols</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">sym</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">]</span>
+    <span class="n">ordered</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="nb">len</span><span class="p">,</span> <span class="n">reverse</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">pyre</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span>
+        <span class="sa">r</span><span class="s2">&quot;(&#39;(?:</span><span class="se">\\</span><span class="s2">&#39;|[^&#39;])*&#39;)|(&quot;</span>
+        <span class="o">+</span> <span class="s2">&quot;|&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">pyre</span><span class="o">.</span><span class="n">escape</span><span class="p">(</span><span class="n">sym</span><span class="p">)</span> <span class="k">for</span> <span class="n">sym</span> <span class="ow">in</span> <span class="n">ordered</span><span class="p">)</span>
+        <span class="o">+</span> <span class="sa">r</span><span class="s2">&quot;)&quot;</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_multichar_replacer</span><span class="p">(</span><span class="n">matchobj</span><span class="p">:</span> <span class="n">pyre</span><span class="o">.</span><span class="n">Match</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Replace character or quoted string with quoted thing.&quot;&quot;&quot;</span>
+    <span class="n">quoted</span><span class="p">,</span> <span class="n">sym</span> <span class="o">=</span> <span class="n">matchobj</span><span class="o">.</span><span class="n">groups</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">quoted</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">quoted</span>
+    <span class="k">return</span> <span class="s2">&quot;&#39;&quot;</span> <span class="o">+</span> <span class="n">sym</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;&#39;&quot;</span><span class="p">,</span> <span class="sa">r</span><span class="s2">&quot;\&#39;&quot;</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot;&#39;&quot;</span>
+
+
+<span class="c1"># TODO: Move all algorithm functions to the algorithms module</span>
+<div class="viewcode-block" id="FST">
+<a class="viewcode-back" href="../../pyfoma.html#pyfoma.fst.FST">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">FST</span><span class="p">:</span>
+
+    <span class="c1"># region Initialization Methods</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">label</span><span class="p">:</span><span class="nb">tuple</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">weight</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">alphabet</span><span class="o">=</span><span class="nb">set</span><span class="p">()):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Creates an FST-structure with a single state.</span>
+
+<span class="sd">        :param label: create a two-state FST that accepts label</span>
+<span class="sd">        :param weight: add a weight to the final state</span>
+<span class="sd">        :param alphabet: declare an alphabet explicitly</span>
+
+<span class="sd">        If &#39;label&#39; is given, a two-state automaton is created with label as the</span>
+<span class="sd">        only transition from the initial state to the final state.</span>
+
+<span class="sd">        If &#39;weight&#39; is also given, the final state will have that weight.</span>
+<span class="sd">        Labels are always tuples internally, so a two-state automaton</span>
+<span class="sd">        that only accepts &#39;a&#39; should have label = (&#39;a&#39;,).</span>
+
+<span class="sd">        If label is the empty string, i.e. (&#39;&#39;,), the second state will not be</span>
+<span class="sd">        created, but the initial state will be made final with weight &#39;weight&#39;.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">alphabet</span> <span class="o">=</span> <span class="n">alphabet</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;The alphabet used by the FST&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">initialstate</span> <span class="o">=</span> <span class="n">State</span><span class="p">()</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;The initial (start) state of the FST&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">states</span> <span class="o">=</span> <span class="p">{</span><span class="bp">self</span><span class="o">.</span><span class="n">initialstate</span><span class="p">}</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;A set of all states in the FST&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">finalstates</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;A set of all final (accepting) states of the FST&quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="n">label</span> <span class="o">==</span> <span class="p">(</span><span class="s1">&#39;&#39;</span><span class="p">,):</span>  <span class="c1"># EPSILON</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">finalstates</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">initialstate</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">initialstate</span><span class="o">.</span><span class="n">finalweight</span> <span class="o">=</span> <span class="n">weight</span>
+        <span class="k">elif</span> <span class="n">label</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">alphabet</span> <span class="o">=</span> <span class="p">{</span><span class="n">s</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">label</span><span class="p">}</span>
+            <span class="n">targetstate</span> <span class="o">=</span> <span class="n">State</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">states</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">targetstate</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">finalstates</span> <span class="o">=</span> <span class="p">{</span><span class="n">targetstate</span><span class="p">}</span>
+            <span class="n">targetstate</span><span class="o">.</span><span class="n">finalweight</span> <span class="o">=</span> <span class="n">weight</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">initialstate</span><span class="o">.</span><span class="n">add_transition</span><span class="p">(</span><span class="n">targetstate</span><span class="p">,</span> <span class="n">label</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span>
+
+<div class="viewcode-block" id="FST.character_ranges">
+<a class="viewcode-back" href="../../pyfoma.html#pyfoma.fst.FST.character_ranges">[docs]</a>
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">character_ranges</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">ranges</span><span class="p">,</span> <span class="n">complement</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s1">&#39;FST&#39;</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Returns a two-state FSM from a list of unicode code point range pairs.</span>
+<span class="sd">           Keyword arguments:</span>
+<span class="sd">           complement -- if True, the character class is negated, i.e. [^ ... ], and</span>
+<span class="sd">           a two-state FST is returned with the single label . and all the symbols in</span>
+<span class="sd">           the character class are put in the alphabet.</span>
+<span class="sd">           &quot;&quot;&quot;</span>
+        <span class="n">newfst</span> <span class="o">=</span> <span class="bp">cls</span><span class="p">()</span>
+        <span class="n">secondstate</span> <span class="o">=</span> <span class="n">State</span><span class="p">()</span>
+        <span class="n">newfst</span><span class="o">.</span><span class="n">states</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">secondstate</span><span class="p">)</span>
+        <span class="n">newfst</span><span class="o">.</span><span class="n">finalstates</span> <span class="o">=</span> <span class="p">{</span><span class="n">secondstate</span><span class="p">}</span>
+        <span class="n">secondstate</span><span class="o">.</span><span class="n">finalweight</span> <span class="o">=</span> <span class="mf">0.0</span>
+        <span class="n">alphabet</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">start</span><span class="p">,</span> <span class="n">end</span> <span class="ow">in</span> <span class="n">ranges</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">symbol</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="n">end</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+                <span class="k">if</span> <span class="n">symbol</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">alphabet</span><span class="p">:</span>
+                    <span class="n">alphabet</span> <span class="o">|=</span> <span class="p">{</span><span class="nb">chr</span><span class="p">(</span><span class="n">symbol</span><span class="p">)}</span>
+                    <span class="k">if</span> <span class="ow">not</span> <span class="n">complement</span><span class="p">:</span>
+                        <span class="n">newfst</span><span class="o">.</span><span class="n">initialstate</span><span class="o">.</span><span class="n">add_transition</span><span class="p">(</span><span class="n">secondstate</span><span class="p">,</span> <span class="p">(</span><span class="nb">chr</span><span class="p">(</span><span class="n">symbol</span><span class="p">),),</span> <span class="mf">0.0</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">complement</span><span class="p">:</span>
+            <span class="n">newfst</span><span class="o">.</span><span class="n">initialstate</span><span class="o">.</span><span class="n">add_transition</span><span class="p">(</span><span class="n">secondstate</span><span class="p">,</span> <span class="p">(</span><span class="s1">&#39;.&#39;</span><span class="p">,),</span> <span class="mf">0.0</span><span class="p">)</span>
+            <span class="n">alphabet</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s1">&#39;.&#39;</span><span class="p">)</span>
+        <span class="n">newfst</span><span class="o">.</span><span class="n">alphabet</span> <span class="o">=</span> <span class="n">alphabet</span>
+        <span class="k">return</span> <span class="n">newfst</span></div>
+
+
+<div class="viewcode-block" id="FST.regex">
+<a class="viewcode-back" href="../../pyfoma.html#pyfoma.fst.FST.regex">[docs]</a>
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">regex</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">regularexpression</span><span class="p">,</span> <span class="n">defined</span> <span class="o">=</span> <span class="p">{},</span> <span class="n">functions</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(),</span> <span class="n">multichar_symbols</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Compile a regular expression and return the resulting FST.</span>
+<span class="sd">           Keyword arguments:</span>
+<span class="sd">           defined -- a dictionary of defined FSTs that the compiler can access whenever</span>
+<span class="sd">                      a defined network is referenced in the regex, e.g. $vowel</span>
+<span class="sd">           functions -- a set of Python functions that the compiler can access when a function</span>
+<span class="sd">                       is referenced in the regex, e.g. $^myfunc(...)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="kn">import</span><span class="w"> </span><span class="nn">pyfoma.private.regexparse</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">regexparse</span>
+        <span class="k">if</span> <span class="n">multichar_symbols</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">escaper</span> <span class="o">=</span> <span class="n">_multichar_matcher</span><span class="p">(</span><span class="n">multichar_symbols</span><span class="p">)</span>
+            <span class="n">regularexpression</span> <span class="o">=</span> <span class="n">escaper</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="n">_multichar_replacer</span><span class="p">,</span> <span class="n">regularexpression</span><span class="p">)</span>
+        <span class="n">myregex</span> <span class="o">=</span> <span class="n">regexparse</span><span class="o">.</span><span class="n">RegexParse</span><span class="p">(</span><span class="n">regularexpression</span><span class="p">,</span> <span class="n">defined</span><span class="p">,</span> <span class="n">functions</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">myregex</span><span class="o">.</span><span class="n">compiled</span></div>
+
+
+    <span class="n">re</span> <span class="o">=</span> <span class="n">regex</span>
+
+<div class="viewcode-block" id="FST.from_strings">
+<a class="viewcode-back" href="../../pyfoma.html#pyfoma.fst.FST.from_strings">[docs]</a>
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">from_strings</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">strings</span><span class="p">,</span> <span class="n">multichar_symbols</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Create an automaton that accepts words in the iterable &#39;strings&#39;.&quot;&quot;&quot;</span>
+        <span class="n">Grammar</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;Start&quot;</span><span class="p">:</span> <span class="p">((</span><span class="n">w</span><span class="p">,</span> <span class="s2">&quot;#&quot;</span><span class="p">)</span> <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="n">strings</span><span class="p">)}</span>
+        <span class="n">lex</span> <span class="o">=</span> <span class="n">FST</span><span class="o">.</span><span class="n">rlg</span><span class="p">(</span><span class="n">Grammar</span><span class="p">,</span> <span class="s2">&quot;Start&quot;</span><span class="p">,</span> <span class="n">multichar_symbols</span><span class="o">=</span><span class="n">multichar_symbols</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">lex</span><span class="o">.</span><span class="n">determinize_as_dfa</span><span class="p">()</span><span class="o">.</span><span class="n">minimize</span><span class="p">()</span><span class="o">.</span><span class="n">label_states_topology</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="FST.rlg">
+<a class="viewcode-back" href="../../pyfoma.html#pyfoma.fst.FST.rlg">[docs]</a>
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">rlg</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="n">startsymbol</span><span class="p">,</span> <span class="n">multichar_symbols</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Compile a (weighted) right-linear grammar into an FST, similarly to lexc.&quot;&quot;&quot;</span>
+        <span class="n">escaper</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="n">multichar_symbols</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">escaper</span> <span class="o">=</span> <span class="n">_multichar_matcher</span><span class="p">(</span><span class="n">multichar_symbols</span><span class="p">)</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">_rlg_tokenize</span><span class="p">(</span><span class="n">w</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">w</span> <span class="o">==</span> <span class="s1">&#39;&#39;</span><span class="p">:</span>
+                <span class="k">return</span> <span class="p">[</span><span class="s1">&#39;&#39;</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">escaper</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">w</span> <span class="o">=</span> <span class="n">escaper</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="n">_multichar_replacer</span><span class="p">,</span> <span class="n">w</span><span class="p">)</span>
+            <span class="n">tokens</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="n">tok_re</span> <span class="o">=</span> <span class="sa">r</span><span class="s2">&quot;&#39;(?P&lt;multi&gt;&#39;|(?:</span><span class="se">\\</span><span class="s2">&#39;|[^&#39;])*)&#39;|</span><span class="se">\\</span><span class="s2">(?P&lt;esc&gt;(.))|(?P&lt;single&gt;(.))&quot;</span>
+            <span class="k">for</span> <span class="n">mo</span> <span class="ow">in</span> <span class="n">pyre</span><span class="o">.</span><span class="n">finditer</span><span class="p">(</span><span class="n">tok_re</span><span class="p">,</span> <span class="n">w</span><span class="p">):</span>
+                <span class="n">token</span> <span class="o">=</span> <span class="n">mo</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="n">mo</span><span class="o">.</span><span class="n">lastgroup</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">token</span> <span class="o">==</span> <span class="s2">&quot; &quot;</span> <span class="ow">and</span> <span class="n">mo</span><span class="o">.</span><span class="n">lastgroup</span> <span class="o">==</span> <span class="s1">&#39;single&#39;</span><span class="p">:</span>
+                    <span class="n">token</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>  <span class="c1"># normal spaces for alignment, escaped for actual</span>
+                <span class="k">elif</span> <span class="n">mo</span><span class="o">.</span><span class="n">lastgroup</span> <span class="o">==</span> <span class="s2">&quot;multi&quot;</span><span class="p">:</span>
+                    <span class="n">token</span> <span class="o">=</span> <span class="n">token</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;\&#39;&quot;</span><span class="p">,</span> <span class="s2">&quot;&#39;&quot;</span><span class="p">)</span>
+                <span class="n">tokens</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">token</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">tokens</span>
+
+        <span class="n">newfst</span> <span class="o">=</span> <span class="n">FST</span><span class="p">(</span><span class="n">alphabet</span> <span class="o">=</span> <span class="nb">set</span><span class="p">())</span>
+        <span class="n">statedict</span> <span class="o">=</span> <span class="p">{</span><span class="n">name</span><span class="p">:</span><span class="n">State</span><span class="p">(</span><span class="n">name</span> <span class="o">=</span> <span class="n">name</span><span class="p">)</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">grammar</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span> <span class="o">|</span> <span class="p">{</span><span class="s2">&quot;#&quot;</span><span class="p">}}</span>
+        <span class="n">newfst</span><span class="o">.</span><span class="n">initialstate</span> <span class="o">=</span> <span class="n">statedict</span><span class="p">[</span><span class="n">startsymbol</span><span class="p">]</span>
+        <span class="n">newfst</span><span class="o">.</span><span class="n">finalstates</span> <span class="o">=</span> <span class="p">{</span><span class="n">statedict</span><span class="p">[</span><span class="s2">&quot;#&quot;</span><span class="p">]}</span>
+        <span class="n">statedict</span><span class="p">[</span><span class="s2">&quot;#&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">finalweight</span> <span class="o">=</span> <span class="mf">0.0</span>
+        <span class="n">newfst</span><span class="o">.</span><span class="n">states</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">statedict</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+
+        <span class="k">for</span> <span class="n">lexstate</span> <span class="ow">in</span> <span class="n">statedict</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span> <span class="o">-</span> <span class="p">{</span><span class="s2">&quot;#&quot;</span><span class="p">}:</span>
+            <span class="k">for</span> <span class="n">rule</span> <span class="ow">in</span> <span class="n">grammar</span><span class="p">[</span><span class="n">lexstate</span><span class="p">]:</span>
+                <span class="n">currstate</span> <span class="o">=</span> <span class="n">statedict</span><span class="p">[</span><span class="n">lexstate</span><span class="p">]</span>
+                <span class="n">lhs</span> <span class="o">=</span> <span class="p">(</span><span class="n">rule</span><span class="p">[</span><span class="mi">0</span><span class="p">],)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">rule</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="nb">str</span><span class="p">)</span> <span class="k">else</span> <span class="n">rule</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+                <span class="n">target</span> <span class="o">=</span> <span class="n">rule</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+                <span class="n">i</span> <span class="o">=</span> <span class="n">_rlg_tokenize</span><span class="p">(</span><span class="n">lhs</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+                <span class="n">o</span> <span class="o">=</span> <span class="n">i</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">lhs</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span> <span class="k">else</span> <span class="n">_rlg_tokenize</span><span class="p">(</span><span class="n">lhs</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+                <span class="n">newfst</span><span class="o">.</span><span class="n">alphabet</span> <span class="o">|=</span> <span class="p">{</span><span class="n">sym</span> <span class="k">for</span> <span class="n">sym</span> <span class="ow">in</span> <span class="n">i</span> <span class="o">+</span> <span class="n">o</span> <span class="k">if</span> <span class="n">sym</span> <span class="o">!=</span> <span class="s1">&#39;&#39;</span><span class="p">}</span>
+                <span class="k">for</span> <span class="n">ii</span><span class="p">,</span> <span class="n">oo</span><span class="p">,</span> <span class="n">idx</span> <span class="ow">in</span> <span class="n">itertools</span><span class="o">.</span><span class="n">zip_longest</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">o</span><span class="p">,</span> <span class="nb">range</span><span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">i</span><span class="p">),</span> <span class="nb">len</span><span class="p">(</span><span class="n">o</span><span class="p">))),</span>
+                    <span class="n">fillvalue</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">):</span>
+                    <span class="n">w</span> <span class="o">=</span> <span class="mf">0.0</span>
+                    <span class="k">if</span> <span class="n">idx</span> <span class="o">==</span> <span class="nb">max</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">i</span><span class="p">),</span> <span class="nb">len</span><span class="p">(</span><span class="n">o</span><span class="p">))</span> <span class="o">-</span> <span class="mi">1</span><span class="p">:</span>  <span class="c1"># dump weight on last transition</span>
+                        <span class="n">targetstate</span> <span class="o">=</span> <span class="n">statedict</span><span class="p">[</span><span class="n">target</span><span class="p">]</span> <span class="c1"># before reaching another lexstate</span>
+                        <span class="n">w</span> <span class="o">=</span> <span class="mf">0.0</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">rule</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">3</span> <span class="k">else</span> <span class="nb">float</span><span class="p">(</span><span class="n">rule</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">targetstate</span> <span class="o">=</span> <span class="n">State</span><span class="p">()</span>
+                        <span class="n">newfst</span><span class="o">.</span><span class="n">states</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">targetstate</span><span class="p">)</span>
+                    <span class="n">newtuple</span> <span class="o">=</span> <span class="p">(</span><span class="n">ii</span><span class="p">,)</span> <span class="k">if</span> <span class="n">ii</span> <span class="o">==</span> <span class="n">oo</span> <span class="k">else</span> <span class="p">(</span><span class="n">ii</span><span class="p">,</span> <span class="n">oo</span><span class="p">)</span>
+                    <span class="n">currstate</span><span class="o">.</span><span class="n">add_transition</span><span class="p">(</span><span class="n">targetstate</span><span class="p">,</span> <span class="n">newtuple</span><span class="p">,</span> <span class="n">w</span><span class="p">)</span>
+                    <span class="n">currstate</span> <span class="o">=</span> <span class="n">targetstate</span>
+        <span class="k">return</span> <span class="n">newfst</span></div>
+
+
+    <span class="c1"># endregion</span>
+
+    <span class="c1"># region Saving and loading</span>
+<div class="viewcode-block" id="FST.save">
+<a class="viewcode-back" href="../../pyfoma.html#pyfoma.fst.FST.save">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">save</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Saves the current FST to a file.</span>
+<span class="sd">        Args:</span>
+<span class="sd">            path (str): The path to save to (without a file extension)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">path</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s1">&#39;.fst&#39;</span><span class="p">):</span>
+            <span class="n">path</span> <span class="o">=</span> <span class="n">path</span> <span class="o">+</span> <span class="s1">&#39;.fst&#39;</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="s1">&#39;wb&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="n">pickle</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">f</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="FST.load">
+<a class="viewcode-back" href="../../pyfoma.html#pyfoma.fst.FST.load">[docs]</a>
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">load</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s1">&#39;FST&#39;</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Loads an FST from a .fst file.</span>
+<span class="sd">        Args:</span>
+<span class="sd">            path (str): The path to load from. Must be a `.fst` file</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">path</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s1">&#39;.fst&#39;</span><span class="p">):</span>
+            <span class="n">path</span> <span class="o">=</span> <span class="n">path</span> <span class="o">+</span> <span class="s1">&#39;.fst&#39;</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="s1">&#39;rb&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="n">fst</span> <span class="o">=</span> <span class="n">pickle</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">fst</span></div>
+
+
+<div class="viewcode-block" id="FST.save_att">
+<a class="viewcode-back" href="../../pyfoma.html#pyfoma.fst.FST.save_att">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">save_att</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">base</span><span class="p">:</span> <span class="n">PathLike</span><span class="p">,</span> <span class="n">state_symbols</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">epsilon</span><span class="o">=</span><span class="s2">&quot;@0@&quot;</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Save to AT&amp;T format files for use with other FST libraries</span>
+<span class="sd">        (Foma, OpenFST, RustFST, HFST, etc).</span>
+
+<span class="sd">        This will, in addition to saving the transitions in `base`,</span>
+<span class="sd">        also create separate files with the extensions `.isyms` and</span>
+<span class="sd">        `.osyms` containing the input and output symbol tables (so for</span>
+<span class="sd">        example if base is `test.fst`, it will create `test.isyms` and</span>
+<span class="sd">        `test.osyms`)</span>
+
+<span class="sd">        Note also that the AT&amp;T format has no mechanism for</span>
+<span class="sd">        quoting or escaping characters (notably whitespace) in symbols</span>
+<span class="sd">        and state names, but only tabs are used as field separators by</span>
+<span class="sd">        default, so any other characters should be acceptable (though</span>
+<span class="sd">        not always recommended).  The symbol `@0@` is used by default</span>
+<span class="sd">        for epsilon (but can be changed with the `epsilon` parameter)</span>
+<span class="sd">        as this is Foma&#39;s default, and will always have symbol ID 0 as</span>
+<span class="sd">        this is required by OpenFST.</span>
+
+<span class="sd">        If `state_symbols` is true, the names of states will be</span>
+<span class="sd">        retained in the output file and a state symbol table created</span>
+<span class="sd">        with the extension `.ssyms`.  This option is disabled by</span>
+<span class="sd">        default since it is not compatible with Foma.</span>
+
+<span class="sd">        Note also that unreachable states are not inclued in the output.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">base</span><span class="p">)</span>
+        <span class="n">ssympath</span> <span class="o">=</span> <span class="n">path</span><span class="o">.</span><span class="n">with_suffix</span><span class="p">(</span><span class="s2">&quot;.ssyms&quot;</span><span class="p">)</span>
+        <span class="n">isympath</span> <span class="o">=</span> <span class="n">path</span><span class="o">.</span><span class="n">with_suffix</span><span class="p">(</span><span class="s2">&quot;.isyms&quot;</span><span class="p">)</span>
+        <span class="n">osympath</span> <span class="o">=</span> <span class="n">path</span><span class="o">.</span><span class="n">with_suffix</span><span class="p">(</span><span class="s2">&quot;.osyms&quot;</span><span class="p">)</span>
+        <span class="c1"># Number states and create state symbol table (see</span>
+        <span class="c1"># todict() for why we must do this in a repeatable way)</span>
+        <span class="n">q</span> <span class="o">=</span> <span class="n">deque</span><span class="p">([</span><span class="bp">self</span><span class="o">.</span><span class="n">initialstate</span><span class="p">])</span>
+        <span class="n">states</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">State</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">ssyms</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">ssymtab</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">while</span> <span class="n">q</span><span class="p">:</span>
+            <span class="n">state</span> <span class="o">=</span> <span class="n">q</span><span class="o">.</span><span class="n">popleft</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">state</span><span class="o">.</span><span class="n">name</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">state_symbols</span><span class="p">:</span>
+                <span class="n">name</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">ssyms</span><span class="p">))</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">name</span> <span class="o">=</span> <span class="n">state</span><span class="o">.</span><span class="n">name</span>
+            <span class="n">ssymtab</span><span class="p">[</span><span class="nb">id</span><span class="p">(</span><span class="n">state</span><span class="p">)]</span> <span class="o">=</span> <span class="n">name</span>
+            <span class="n">ssyms</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+            <span class="n">states</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
+            <span class="c1"># Make sure to sort here too as the order of insertion will</span>
+            <span class="c1"># vary as a consequence of different ordering of states</span>
+            <span class="k">for</span> <span class="n">label</span><span class="p">,</span> <span class="n">arcs</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">state</span><span class="o">.</span><span class="n">transitions</span><span class="o">.</span><span class="n">items</span><span class="p">(),</span>
+                                      <span class="n">key</span><span class="o">=</span><span class="n">operator</span><span class="o">.</span><span class="n">itemgetter</span><span class="p">(</span><span class="mi">0</span><span class="p">)):</span>
+                <span class="c1"># FIXME: it is not possible to guarantee the ordering</span>
+                <span class="c1"># here.  Consider not using `set` for arcs.</span>
+                <span class="k">for</span> <span class="n">arc</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">arcs</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="n">operator</span><span class="o">.</span><span class="n">attrgetter</span><span class="p">(</span><span class="s2">&quot;weight&quot;</span><span class="p">)):</span>
+                    <span class="k">if</span> <span class="nb">id</span><span class="p">(</span><span class="n">arc</span><span class="o">.</span><span class="n">targetstate</span><span class="p">)</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">ssymtab</span><span class="p">:</span>
+                        <span class="n">q</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">arc</span><span class="o">.</span><span class="n">targetstate</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">state_symbols</span><span class="p">:</span>
+            <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">ssympath</span><span class="p">,</span> <span class="s2">&quot;wt&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">outfh</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="n">name</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">ssyms</span><span class="p">):</span>
+                    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="se">\t</span><span class="si">{</span><span class="n">idx</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">file</span><span class="o">=</span><span class="n">outfh</span><span class="p">)</span>
+        <span class="c1"># Do a second pass to output the FST itself (we will always have</span>
+        <span class="c1"># to do this because of the need to number states)</span>
+        <span class="n">isyms</span> <span class="o">=</span> <span class="p">{</span><span class="n">epsilon</span><span class="p">:</span> <span class="mi">0</span><span class="p">}</span>
+        <span class="n">osyms</span> <span class="o">=</span> <span class="p">{</span><span class="n">epsilon</span><span class="p">:</span> <span class="mi">0</span><span class="p">}</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">output_state</span><span class="p">(</span><span class="n">s</span><span class="p">:</span> <span class="n">State</span><span class="p">,</span> <span class="n">outfh</span><span class="p">:</span> <span class="n">TextIO</span><span class="p">):</span>
+            <span class="n">name</span> <span class="o">=</span> <span class="n">ssymtab</span><span class="p">[</span><span class="nb">id</span><span class="p">(</span><span class="n">s</span><span class="p">)]</span>
+            <span class="k">for</span> <span class="n">label</span><span class="p">,</span> <span class="n">arcs</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">state</span><span class="o">.</span><span class="n">transitions</span><span class="o">.</span><span class="n">items</span><span class="p">(),</span>
+                                      <span class="n">key</span><span class="o">=</span><span class="n">operator</span><span class="o">.</span><span class="n">itemgetter</span><span class="p">(</span><span class="mi">0</span><span class="p">)):</span>
+                <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">label</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                    <span class="n">isym</span> <span class="o">=</span> <span class="n">osym</span> <span class="o">=</span> <span class="p">(</span><span class="n">label</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="ow">or</span> <span class="n">epsilon</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">isym</span><span class="p">,</span> <span class="n">osym</span> <span class="o">=</span> <span class="p">((</span><span class="n">x</span> <span class="ow">or</span> <span class="n">epsilon</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">label</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">isym</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">isyms</span><span class="p">:</span>
+                    <span class="n">isyms</span><span class="p">[</span><span class="n">isym</span><span class="p">]</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">isyms</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">osym</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">osyms</span><span class="p">:</span>
+                    <span class="n">osyms</span><span class="p">[</span><span class="n">osym</span><span class="p">]</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">osyms</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">transition</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">arcs</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="n">operator</span><span class="o">.</span><span class="n">attrgetter</span><span class="p">(</span><span class="s2">&quot;weight&quot;</span><span class="p">)):</span>
+                    <span class="n">dest</span> <span class="o">=</span> <span class="n">ssymtab</span><span class="p">[</span><span class="nb">id</span><span class="p">(</span><span class="n">transition</span><span class="o">.</span><span class="n">targetstate</span><span class="p">)]</span>
+                    <span class="n">fields</span> <span class="o">=</span> <span class="p">[</span>
+                        <span class="n">name</span><span class="p">,</span>
+                        <span class="n">dest</span><span class="p">,</span>
+                        <span class="n">isym</span><span class="p">,</span>
+                        <span class="n">osym</span><span class="p">,</span>
+                    <span class="p">]</span>
+                    <span class="k">if</span> <span class="n">transition</span><span class="o">.</span><span class="n">weight</span> <span class="o">!=</span> <span class="mf">0.0</span><span class="p">:</span>
+                        <span class="n">fields</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">transition</span><span class="o">.</span><span class="n">weight</span><span class="p">))</span>
+                    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\t</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">fields</span><span class="p">),</span> <span class="n">file</span><span class="o">=</span><span class="n">outfh</span><span class="p">)</span>
+            <span class="c1"># NOTE: These are not required to be at the end of the file</span>
+            <span class="k">if</span> <span class="n">s</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">finalstates</span><span class="p">:</span>
+                <span class="n">name</span> <span class="o">=</span> <span class="n">ssymtab</span><span class="p">[</span><span class="nb">id</span><span class="p">(</span><span class="n">s</span><span class="p">)]</span>
+                <span class="k">if</span> <span class="n">s</span><span class="o">.</span><span class="n">finalweight</span> <span class="o">!=</span> <span class="mf">0.0</span><span class="p">:</span>
+                    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="se">\t</span><span class="si">{</span><span class="n">s</span><span class="o">.</span><span class="n">finalweight</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">file</span><span class="o">=</span><span class="n">outfh</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="nb">print</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">file</span><span class="o">=</span><span class="n">outfh</span><span class="p">)</span>
+
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="s2">&quot;wt&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">outfh</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">state</span> <span class="ow">in</span> <span class="n">states</span><span class="p">:</span>
+                <span class="n">output_state</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">outfh</span><span class="p">)</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">isympath</span><span class="p">,</span> <span class="s2">&quot;wt&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">outfh</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">idx</span> <span class="ow">in</span> <span class="n">isyms</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="se">\t</span><span class="si">{</span><span class="n">idx</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">file</span><span class="o">=</span><span class="n">outfh</span><span class="p">)</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">osympath</span><span class="p">,</span> <span class="s2">&quot;wt&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">outfh</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">idx</span> <span class="ow">in</span> <span class="n">osyms</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="se">\t</span><span class="si">{</span><span class="n">idx</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">file</span><span class="o">=</span><span class="n">outfh</span><span class="p">)</span></div>
+
+    <span class="c1"># endregion</span>
+
+
+    <span class="c1"># region Utility Methods</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">__copy__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Copy an FST. Actually calls copy_filtered().&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">copy_filtered</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__len__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the number of states.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">states</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Generate an AT&amp;T string representing the FST.&quot;&quot;&quot;</span>
+        <span class="c1"># Number states arbitrarily based on id()</span>
+        <span class="n">ids</span> <span class="o">=</span> <span class="p">[</span><span class="nb">id</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">states</span> <span class="k">if</span> <span class="n">s</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">initialstate</span><span class="p">]</span>
+        <span class="n">statenums</span> <span class="o">=</span> <span class="p">{</span><span class="n">ids</span><span class="p">[</span><span class="n">i</span><span class="p">]:</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">ids</span><span class="p">))}</span>
+        <span class="n">statenums</span><span class="p">[</span><span class="nb">id</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">initialstate</span><span class="p">)]</span> <span class="o">=</span> <span class="mi">0</span> <span class="c1"># The initial state is always 0</span>
+        <span class="n">st</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">states</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">transitions</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">label</span> <span class="ow">in</span> <span class="n">s</span><span class="o">.</span><span class="n">transitions</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+                    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">label</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                        <span class="n">att_label</span> <span class="o">=</span> <span class="p">(</span><span class="n">label</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">label</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">att_label</span> <span class="o">=</span> <span class="n">label</span>
+                    <span class="c1"># You get Foma&#39;s default here since it cannot be configured</span>
+                    <span class="n">att_label</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;@0@&quot;</span> <span class="k">if</span> <span class="n">sym</span> <span class="o">==</span> <span class="s2">&quot;&quot;</span> <span class="k">else</span> <span class="n">sym</span> <span class="k">for</span> <span class="n">sym</span> <span class="ow">in</span> <span class="n">att_label</span><span class="p">]</span>
+                    <span class="k">for</span> <span class="n">transition</span> <span class="ow">in</span> <span class="n">s</span><span class="o">.</span><span class="n">transitions</span><span class="p">[</span><span class="n">label</span><span class="p">]:</span>
+                        <span class="n">st</span> <span class="o">+=</span> <span class="s1">&#39;</span><span class="si">{}</span><span class="se">\t</span><span class="si">{}</span><span class="se">\t</span><span class="si">{}</span><span class="se">\t</span><span class="si">{}</span><span class="se">\n</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">statenums</span><span class="p">[</span><span class="nb">id</span><span class="p">(</span><span class="n">s</span><span class="p">)],</span>\
+                        <span class="n">statenums</span><span class="p">[</span><span class="nb">id</span><span class="p">(</span><span class="n">transition</span><span class="o">.</span><span class="n">targetstate</span><span class="p">)],</span> <span class="s1">&#39;</span><span class="se">\t</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">att_label</span><span class="p">),</span>\
+                        <span class="n">transition</span><span class="o">.</span><span class="n">weight</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">states</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">s</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">finalstates</span><span class="p">:</span>
+                <span class="n">st</span> <span class="o">+=</span> <span class="s1">&#39;</span><span class="si">{}</span><span class="se">\t</span><span class="si">{}</span><span class="se">\n</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">statenums</span><span class="p">[</span><span class="nb">id</span><span class="p">(</span><span class="n">s</span><span class="p">)],</span> <span class="n">s</span><span class="o">.</span><span class="n">finalweight</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">st</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__and__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Intersection.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">intersection</span><span class="p">(</span><span class="n">other</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__or__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Union.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">union</span><span class="p">(</span><span class="n">other</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__sub__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Set subtraction.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">difference</span><span class="p">(</span><span class="n">other</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__pow__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Cross-product.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">cross_product</span><span class="p">(</span><span class="n">other</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__mul__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Concatenation.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">other</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__matmul__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Composition.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">compose</span><span class="p">(</span><span class="n">other</span><span class="p">)</span>
+
+<div class="viewcode-block" id="FST.become">
+<a class="viewcode-back" href="../../pyfoma.html#pyfoma.fst.FST.become">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">become</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Hacky or what? We use this to mutate self for those algorithms that don&#39;t directly do it.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">alphabet</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">initialstate</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">states</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">finalstates</span> <span class="o">=</span> \
+        <span class="n">other</span><span class="o">.</span><span class="n">alphabet</span><span class="p">,</span> <span class="n">other</span><span class="o">.</span><span class="n">initialstate</span><span class="p">,</span> <span class="n">other</span><span class="o">.</span><span class="n">states</span><span class="p">,</span> <span class="n">other</span><span class="o">.</span><span class="n">finalstates</span>
+        <span class="k">return</span> <span class="bp">self</span></div>
+
+
+<div class="viewcode-block" id="FST.number_unnamed_states">
+<a class="viewcode-back" href="../../pyfoma.html#pyfoma.fst.FST.number_unnamed_states">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">number_unnamed_states</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">force</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Sequentially number those states that don&#39;t have the &#39;name&#39; attribute.</span>
+<span class="sd">           If &#39;force == True&#39;, number all states.&quot;&quot;&quot;</span>
+        <span class="n">cntr</span> <span class="o">=</span> <span class="n">itertools</span><span class="o">.</span><span class="n">count</span><span class="p">()</span>
+        <span class="n">ordered</span> <span class="o">=</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">initialstate</span><span class="p">]</span> <span class="o">+</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">states</span> <span class="o">-</span> <span class="p">{</span><span class="bp">self</span><span class="o">.</span><span class="n">initialstate</span><span class="p">})</span>
+        <span class="k">return</span> <span class="p">{</span><span class="nb">id</span><span class="p">(</span><span class="n">s</span><span class="p">):(</span><span class="nb">next</span><span class="p">(</span><span class="n">cntr</span><span class="p">)</span> <span class="k">if</span> <span class="n">s</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">force</span> <span class="o">==</span> <span class="kc">True</span> <span class="k">else</span> <span class="n">s</span><span class="o">.</span><span class="n">name</span><span class="p">)</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">ordered</span><span class="p">}</span></div>
+
+
+<div class="viewcode-block" id="FST.cleanup_sigma">
+<a class="viewcode-back" href="../../pyfoma.html#pyfoma.fst.FST.cleanup_sigma">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">cleanup_sigma</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Remove symbols if they are no longer needed, including . .&quot;&quot;&quot;</span>
+        <span class="n">seen</span> <span class="o">=</span> <span class="p">{</span><span class="n">sym</span> <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">lbl</span><span class="p">,</span> <span class="n">_</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">all_transitions</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">states</span><span class="p">)</span> <span class="k">for</span> <span class="n">sym</span> <span class="ow">in</span> <span class="n">lbl</span><span class="p">}</span>
+        <span class="k">if</span> <span class="s1">&#39;.&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">seen</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">alphabet</span> <span class="o">&amp;=</span> <span class="n">seen</span>
+        <span class="k">return</span> <span class="bp">self</span></div>
+
+
+<div class="viewcode-block" id="FST.check_graphviz_installed">
+<a class="viewcode-back" href="../../pyfoma.html#pyfoma.fst.FST.check_graphviz_installed">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">check_graphviz_installed</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">subprocess</span><span class="o">.</span><span class="n">run</span><span class="p">([</span><span class="s2">&quot;dot&quot;</span><span class="p">,</span> <span class="s2">&quot;-V&quot;</span><span class="p">],</span> <span class="n">check</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">stdout</span><span class="o">=</span><span class="n">subprocess</span><span class="o">.</span><span class="n">PIPE</span><span class="p">,</span> <span class="n">stderr</span><span class="o">=</span><span class="n">subprocess</span><span class="o">.</span><span class="n">PIPE</span><span class="p">)</span>
+            <span class="k">return</span> <span class="kc">True</span>
+        <span class="k">except</span> <span class="p">(</span><span class="n">subprocess</span><span class="o">.</span><span class="n">CalledProcessError</span><span class="p">,</span> <span class="ne">FileNotFoundError</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">False</span></div>
+
+
+<div class="viewcode-block" id="FST.view">
+<a class="viewcode-back" href="../../pyfoma.html#pyfoma.fst.FST.view">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">view</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">raw</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">show_weights</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">show_alphabet</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s1">&#39;graphviz.Digraph&#39;</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Creates a &#39;graphviz.Digraph&#39; object to view the FST. Will automatically display the FST in Jupyter.</span>
+
+<span class="sd">            :param raw: if True, show label tuples and weights unformatted</span>
+<span class="sd">            :param show_weights: force display of weights even if 0.0</span>
+<span class="sd">            :param show_alphabet: displays the alphabet below the FST</span>
+<span class="sd">            :return: A Digraph object which will automatically display in Jupyter.</span>
+
+<span class="sd">           If you would like to display the FST from a non-Jupyter environment, please use :code:`FST.render`</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="kn">import</span><span class="w"> </span><span class="nn">graphviz</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">check_graphviz_installed</span><span class="p">():</span>
+            <span class="k">raise</span> <span class="ne">EnvironmentError</span><span class="p">(</span><span class="s2">&quot;Graphviz executable not found. Please install [Graphviz](https://www.graphviz.org/download/). On macOS, use `brew install graphviz`.&quot;</span><span class="p">)</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">_float_format</span><span class="p">(</span><span class="n">num</span><span class="p">):</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">show_weights</span><span class="p">:</span>
+                <span class="k">return</span> <span class="s2">&quot;&quot;</span>
+            <span class="n">s</span> <span class="o">=</span> <span class="s1">&#39;</span><span class="si">{0:.2f}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">num</span><span class="p">)</span><span class="o">.</span><span class="n">rstrip</span><span class="p">(</span><span class="s1">&#39;0&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">rstrip</span><span class="p">(</span><span class="s1">&#39;.&#39;</span><span class="p">)</span>
+            <span class="n">s</span> <span class="o">=</span> <span class="s1">&#39;0&#39;</span> <span class="k">if</span> <span class="n">s</span> <span class="o">==</span> <span class="s1">&#39;-0&#39;</span> <span class="k">else</span> <span class="n">s</span>
+            <span class="k">return</span> <span class="s2">&quot;/&quot;</span> <span class="o">+</span> <span class="n">s</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">_str_fmt</span><span class="p">(</span><span class="n">s</span><span class="p">):</span>  <span class="c1"># Use greek lunate epsilon symbol U+03F5</span>
+            <span class="k">return</span> <span class="p">(</span><span class="n">sublabel</span> <span class="k">if</span> <span class="n">sublabel</span> <span class="o">!=</span> <span class="s1">&#39;&#39;</span> <span class="k">else</span> <span class="s1">&#39;&amp;#x03f5;&#39;</span> <span class="k">for</span> <span class="n">sublabel</span> <span class="ow">in</span> <span class="n">s</span><span class="p">)</span>
+
+        <span class="c1">#        g = graphviz.Digraph(&#39;FST&#39;, filename=&#39;fsm.gv&#39;)</span>
+
+        <span class="n">sigma</span> <span class="o">=</span> <span class="s2">&quot;&amp;Sigma;: {&quot;</span> <span class="o">+</span> <span class="s1">&#39;,&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">a</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">alphabet</span><span class="p">))</span> <span class="o">+</span> <span class="s2">&quot;}&quot;</span> \
+            <span class="k">if</span> <span class="n">show_alphabet</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+        <span class="n">g</span> <span class="o">=</span> <span class="n">graphviz</span><span class="o">.</span><span class="n">Digraph</span><span class="p">(</span><span class="s1">&#39;FST&#39;</span><span class="p">,</span> <span class="n">graph_attr</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;label&quot;</span><span class="p">:</span> <span class="n">sigma</span><span class="p">,</span> <span class="s2">&quot;rankdir&quot;</span><span class="p">:</span> <span class="s2">&quot;LR&quot;</span><span class="p">})</span>
+        <span class="n">statenums</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">number_unnamed_states</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">show_weights</span> <span class="o">==</span> <span class="kc">False</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">weight</span> <span class="o">!=</span> <span class="mf">0.0</span> <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">t</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">all_transitions</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">states</span><span class="p">))</span> <span class="ow">or</span> \
+                    <span class="nb">any</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">finalweight</span> <span class="o">!=</span> <span class="mf">0.0</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">finalstates</span><span class="p">):</span>
+                <span class="n">show_weights</span> <span class="o">=</span> <span class="kc">True</span>
+
+        <span class="n">g</span><span class="o">.</span><span class="n">attr</span><span class="p">(</span><span class="n">rankdir</span><span class="o">=</span><span class="s1">&#39;LR&#39;</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="s1">&#39;8,5&#39;</span><span class="p">)</span>
+        <span class="n">g</span><span class="o">.</span><span class="n">attr</span><span class="p">(</span><span class="s1">&#39;node&#39;</span><span class="p">,</span> <span class="n">shape</span><span class="o">=</span><span class="s1">&#39;doublecircle&#39;</span><span class="p">,</span> <span class="n">style</span><span class="o">=</span><span class="s1">&#39;filled&#39;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">finalstates</span><span class="p">:</span>
+            <span class="n">g</span><span class="o">.</span><span class="n">node</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">statenums</span><span class="p">[</span><span class="nb">id</span><span class="p">(</span><span class="n">s</span><span class="p">)])</span> <span class="o">+</span> <span class="n">_float_format</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">finalweight</span><span class="p">))</span>
+            <span class="k">if</span> <span class="n">s</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">initialstate</span><span class="p">:</span>
+                <span class="n">g</span><span class="o">.</span><span class="n">node</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">statenums</span><span class="p">[</span><span class="nb">id</span><span class="p">(</span><span class="n">s</span><span class="p">)])</span> <span class="o">+</span> <span class="n">_float_format</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">finalweight</span><span class="p">),</span> <span class="n">style</span><span class="o">=</span><span class="s1">&#39;filled, bold&#39;</span><span class="p">)</span>
+
+        <span class="n">g</span><span class="o">.</span><span class="n">attr</span><span class="p">(</span><span class="s1">&#39;node&#39;</span><span class="p">,</span> <span class="n">shape</span><span class="o">=</span><span class="s1">&#39;circle&#39;</span><span class="p">,</span> <span class="n">style</span><span class="o">=</span><span class="s1">&#39;filled&#39;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">states</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">s</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">finalstates</span><span class="p">:</span>
+                <span class="n">g</span><span class="o">.</span><span class="n">node</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">statenums</span><span class="p">[</span><span class="nb">id</span><span class="p">(</span><span class="n">s</span><span class="p">)]),</span> <span class="n">shape</span><span class="o">=</span><span class="s1">&#39;circle&#39;</span><span class="p">,</span> <span class="n">style</span><span class="o">=</span><span class="s1">&#39;filled&#39;</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">s</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">initialstate</span><span class="p">:</span>
+                    <span class="n">g</span><span class="o">.</span><span class="n">node</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">statenums</span><span class="p">[</span><span class="nb">id</span><span class="p">(</span><span class="n">s</span><span class="p">)]),</span> <span class="n">shape</span><span class="o">=</span><span class="s1">&#39;circle&#39;</span><span class="p">,</span> <span class="n">style</span><span class="o">=</span><span class="s1">&#39;filled, bold&#39;</span><span class="p">)</span>
+            <span class="n">grouped_targets</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">set</span><span class="p">)</span>  <span class="c1"># {states}</span>
+            <span class="k">for</span> <span class="n">label</span><span class="p">,</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">s</span><span class="o">.</span><span class="n">all_transitions</span><span class="p">():</span>
+                <span class="n">grouped_targets</span><span class="p">[</span><span class="n">t</span><span class="o">.</span><span class="n">targetstate</span><span class="p">]</span> <span class="o">|=</span> <span class="p">{(</span><span class="n">t</span><span class="o">.</span><span class="n">targetstate</span><span class="p">,</span> <span class="n">label</span><span class="p">,</span> <span class="n">t</span><span class="o">.</span><span class="n">weight</span><span class="p">)}</span>
+            <span class="k">for</span> <span class="n">target</span><span class="p">,</span> <span class="n">tlabelset</span> <span class="ow">in</span> <span class="n">grouped_targets</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="k">if</span> <span class="n">raw</span> <span class="o">==</span> <span class="kc">True</span><span class="p">:</span>
+                    <span class="n">labellist</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">((</span><span class="nb">str</span><span class="p">(</span><span class="n">l</span><span class="p">)</span> <span class="o">+</span> <span class="s1">&#39;/&#39;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">w</span><span class="p">)</span> <span class="k">for</span> <span class="n">t</span><span class="p">,</span> <span class="n">l</span><span class="p">,</span> <span class="n">w</span> <span class="ow">in</span> <span class="n">tlabelset</span><span class="p">))</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">labellist</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">((</span><span class="s1">&#39;:&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">_str_fmt</span><span class="p">(</span><span class="n">label</span><span class="p">))</span> <span class="o">+</span> <span class="n">_float_format</span><span class="p">(</span><span class="n">w</span><span class="p">)</span> <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">label</span><span class="p">,</span> <span class="n">w</span> <span class="ow">in</span> <span class="n">tlabelset</span><span class="p">))</span>
+                <span class="n">printlabel</span> <span class="o">=</span> <span class="s1">&#39;, &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">labellist</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">s</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">finalstates</span><span class="p">:</span>
+                    <span class="n">sourcelabel</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">statenums</span><span class="p">[</span><span class="nb">id</span><span class="p">(</span><span class="n">s</span><span class="p">)])</span> <span class="o">+</span> <span class="n">_float_format</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">finalweight</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">sourcelabel</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">statenums</span><span class="p">[</span><span class="nb">id</span><span class="p">(</span><span class="n">s</span><span class="p">)])</span>
+                <span class="k">if</span> <span class="n">target</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">finalstates</span><span class="p">:</span>
+                    <span class="n">targetlabel</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">statenums</span><span class="p">[</span><span class="nb">id</span><span class="p">(</span><span class="n">target</span><span class="p">)])</span> <span class="o">+</span> <span class="n">_float_format</span><span class="p">(</span><span class="n">target</span><span class="o">.</span><span class="n">finalweight</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">targetlabel</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">statenums</span><span class="p">[</span><span class="nb">id</span><span class="p">(</span><span class="n">target</span><span class="p">)])</span>
+                <span class="n">g</span><span class="o">.</span><span class="n">edge</span><span class="p">(</span><span class="n">sourcelabel</span><span class="p">,</span> <span class="n">targetlabel</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="n">graphviz</span><span class="o">.</span><span class="n">nohtml</span><span class="p">(</span><span class="n">printlabel</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">g</span></div>
+
+
+<div class="viewcode-block" id="FST.render">
+<a class="viewcode-back" href="../../pyfoma.html#pyfoma.fst.FST.render">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">render</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">view</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">filename</span><span class="p">:</span> <span class="nb">str</span><span class="o">=</span><span class="s1">&#39;FST&#39;</span><span class="p">,</span> <span class="nb">format</span><span class="o">=</span><span class="s1">&#39;pdf&#39;</span><span class="p">,</span> <span class="n">tight</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Renders the FST to a file and optionally opens the file.</span>
+<span class="sd">        :param view: If True, the rendered file will be opened.</span>
+<span class="sd">        :param format: The file format for the Digraph. Typically &#39;pdf&#39;, &#39;png&#39;, or &#39;svg&#39;. View all formats: https://graphviz.org/docs/outputs/</span>
+<span class="sd">        :param tight: If False, the rendered file will have whitespace margins around the graph.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="kn">import</span><span class="w"> </span><span class="nn">graphviz</span>
+        <span class="n">digraph</span> <span class="o">=</span> <span class="n">cast</span><span class="p">(</span><span class="n">graphviz</span><span class="o">.</span><span class="n">Digraph</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">view</span><span class="p">())</span>
+        <span class="n">digraph</span><span class="o">.</span><span class="n">format</span> <span class="o">=</span> <span class="nb">format</span>
+        <span class="k">if</span> <span class="n">tight</span><span class="p">:</span>
+            <span class="n">digraph</span><span class="o">.</span><span class="n">graph_attr</span><span class="p">[</span><span class="s1">&#39;margin&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="s1">&#39;0&#39;</span> <span class="c1"># Remove padding</span>
+        <span class="n">digraph</span><span class="o">.</span><span class="n">render</span><span class="p">(</span><span class="n">view</span><span class="o">=</span><span class="n">view</span><span class="p">,</span> <span class="n">filename</span><span class="o">=</span><span class="n">filename</span><span class="p">,</span> <span class="n">cleanup</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="FST.all_transitions">
+<a class="viewcode-back" href="../../pyfoma.html#pyfoma.fst.FST.all_transitions">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">all_transitions</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">states</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Enumerate all transitions (state, label, Transition) for an iterable of states.&quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">state</span> <span class="ow">in</span> <span class="n">states</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">label</span><span class="p">,</span> <span class="n">transitions</span> <span class="ow">in</span> <span class="n">state</span><span class="o">.</span><span class="n">transitions</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">transitions</span><span class="p">:</span>
+                    <span class="k">yield</span> <span class="n">state</span><span class="p">,</span> <span class="n">label</span><span class="p">,</span> <span class="n">t</span></div>
+
+
+<div class="viewcode-block" id="FST.all_transitions_by_label">
+<a class="viewcode-back" href="../../pyfoma.html#pyfoma.fst.FST.all_transitions_by_label">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">all_transitions_by_label</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">states</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Enumerate all transitions by label. Each yield produces a label, and those</span>
+<span class="sd">           the target states. &#39;states&#39; is an iterable of source states.&quot;&quot;&quot;</span>
+        <span class="n">all_labels</span> <span class="o">=</span> <span class="p">{</span><span class="n">l</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">states</span> <span class="k">for</span> <span class="n">l</span> <span class="ow">in</span> <span class="n">s</span><span class="o">.</span><span class="n">transitions</span><span class="o">.</span><span class="n">keys</span><span class="p">()}</span>
+        <span class="k">for</span> <span class="n">l</span> <span class="ow">in</span> <span class="n">all_labels</span><span class="p">:</span>
+            <span class="n">targets</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+            <span class="k">for</span> <span class="n">state</span> <span class="ow">in</span> <span class="n">states</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">l</span> <span class="ow">in</span> <span class="n">state</span><span class="o">.</span><span class="n">transitions</span><span class="p">:</span>
+                    <span class="k">for</span> <span class="n">transition</span> <span class="ow">in</span> <span class="n">state</span><span class="o">.</span><span class="n">transitions</span><span class="p">[</span><span class="n">l</span><span class="p">]:</span>
+                        <span class="n">targets</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">transition</span><span class="o">.</span><span class="n">targetstate</span><span class="p">)</span>
+            <span class="k">yield</span> <span class="n">l</span><span class="p">,</span> <span class="n">targets</span></div>
+
+
+<div class="viewcode-block" id="FST.copy_mod">
+<a class="viewcode-back" href="../../pyfoma.html#pyfoma.fst.FST.copy_mod">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">copy_mod</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">modlabel</span><span class="o">=</span><span class="k">lambda</span> <span class="n">l</span><span class="p">,</span> <span class="n">w</span><span class="p">:</span> <span class="n">l</span><span class="p">,</span> <span class="n">modweight</span><span class="o">=</span><span class="k">lambda</span> <span class="n">l</span><span class="p">,</span> <span class="n">w</span><span class="p">:</span> <span class="n">w</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Copies an FSM and possibly modifies labels and weights through functions.</span>
+<span class="sd">           Keyword arguments:</span>
+<span class="sd">           modlabel -- a function that modifies the label, takes label, weight as args.</span>
+<span class="sd">           modweights -- a function that modifies the weight, takes label, weight as args.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">newfst</span> <span class="o">=</span> <span class="n">FST</span><span class="p">(</span><span class="n">alphabet</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">alphabet</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span>
+        <span class="n">q1q2</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">State</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="n">k</span><span class="o">.</span><span class="n">name</span><span class="p">)</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">states</span><span class="p">}</span>
+        <span class="n">newfst</span><span class="o">.</span><span class="n">states</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">q1q2</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+        <span class="n">newfst</span><span class="o">.</span><span class="n">finalstates</span> <span class="o">=</span> <span class="p">{</span><span class="n">q1q2</span><span class="p">[</span><span class="n">s</span><span class="p">]</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">finalstates</span><span class="p">}</span>
+        <span class="n">newfst</span><span class="o">.</span><span class="n">initialstate</span> <span class="o">=</span> <span class="n">q1q2</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">initialstate</span><span class="p">]</span>
+
+        <span class="k">for</span> <span class="n">s</span><span class="p">,</span> <span class="n">lbl</span><span class="p">,</span> <span class="n">t</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">all_transitions</span><span class="p">(</span><span class="n">q1q2</span><span class="o">.</span><span class="n">keys</span><span class="p">()):</span>
+            <span class="n">q1q2</span><span class="p">[</span><span class="n">s</span><span class="p">]</span><span class="o">.</span><span class="n">add_transition</span><span class="p">(</span><span class="n">q1q2</span><span class="p">[</span><span class="n">t</span><span class="o">.</span><span class="n">targetstate</span><span class="p">],</span> <span class="n">modlabel</span><span class="p">(</span><span class="n">lbl</span><span class="p">,</span> <span class="n">t</span><span class="o">.</span><span class="n">weight</span><span class="p">),</span> <span class="n">modweight</span><span class="p">(</span><span class="n">lbl</span><span class="p">,</span> <span class="n">t</span><span class="o">.</span><span class="n">weight</span><span class="p">))</span>
+
+        <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">finalstates</span><span class="p">:</span>
+            <span class="n">q1q2</span><span class="p">[</span><span class="n">s</span><span class="p">]</span><span class="o">.</span><span class="n">finalweight</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">finalweight</span>
+
+        <span class="k">return</span> <span class="n">newfst</span></div>
+
+
+<div class="viewcode-block" id="FST.copy_filtered">
+<a class="viewcode-back" href="../../pyfoma.html#pyfoma.fst.FST.copy_filtered">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">copy_filtered</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">labelfilter</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="kc">True</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Create a copy of self, possibly filtering out labels where them</span>
+<span class="sd">           optional function &#39;labelfilter&#39; returns False.&quot;&quot;&quot;</span>
+        <span class="n">newfst</span> <span class="o">=</span> <span class="n">FST</span><span class="p">(</span><span class="n">alphabet</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">alphabet</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span>
+        <span class="n">q1q2</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span><span class="n">State</span><span class="p">()</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">states</span><span class="p">}</span>
+        <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">states</span><span class="p">:</span>
+            <span class="n">q1q2</span><span class="p">[</span><span class="n">s</span><span class="p">]</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">name</span>
+        <span class="n">newfst</span><span class="o">.</span><span class="n">states</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">q1q2</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+        <span class="n">newfst</span><span class="o">.</span><span class="n">finalstates</span> <span class="o">=</span> <span class="p">{</span><span class="n">q1q2</span><span class="p">[</span><span class="n">s</span><span class="p">]</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">finalstates</span><span class="p">}</span>
+        <span class="n">newfst</span><span class="o">.</span><span class="n">initialstate</span> <span class="o">=</span> <span class="n">q1q2</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">initialstate</span><span class="p">]</span>
+
+        <span class="k">for</span> <span class="n">s</span><span class="p">,</span> <span class="n">lbl</span><span class="p">,</span> <span class="n">t</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">all_transitions</span><span class="p">(</span><span class="n">q1q2</span><span class="o">.</span><span class="n">keys</span><span class="p">()):</span>
+            <span class="k">if</span> <span class="n">labelfilter</span><span class="p">(</span><span class="n">lbl</span><span class="p">):</span>
+                <span class="n">q1q2</span><span class="p">[</span><span class="n">s</span><span class="p">]</span><span class="o">.</span><span class="n">add_transition</span><span class="p">(</span><span class="n">q1q2</span><span class="p">[</span><span class="n">t</span><span class="o">.</span><span class="n">targetstate</span><span class="p">],</span> <span class="n">lbl</span><span class="p">,</span> <span class="n">t</span><span class="o">.</span><span class="n">weight</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">finalstates</span><span class="p">:</span>
+            <span class="n">q1q2</span><span class="p">[</span><span class="n">s</span><span class="p">]</span><span class="o">.</span><span class="n">finalweight</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">finalweight</span>
+
+        <span class="k">return</span> <span class="n">newfst</span><span class="p">,</span> <span class="n">q1q2</span></div>
+
+
+
+<div class="viewcode-block" id="FST.generate">
+<a class="viewcode-back" href="../../pyfoma.html#pyfoma.fst.FST.generate">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">generate</span><span class="p">(</span><span class="bp">self</span><span class="p">:</span> <span class="s1">&#39;FST&#39;</span><span class="p">,</span> <span class="n">word</span><span class="p">,</span> <span class="n">weights</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">tokenize_outputs</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">obey_flags</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">print_flags</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Pass word through FST and return generator that yields all outputs.&quot;&quot;&quot;</span>
+        <span class="k">yield from</span> <span class="bp">self</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="n">word</span><span class="p">,</span> <span class="n">inverse</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">weights</span><span class="o">=</span><span class="n">weights</span><span class="p">,</span> <span class="n">tokenize_outputs</span><span class="o">=</span><span class="n">tokenize_outputs</span><span class="p">,</span> <span class="n">obey_flags</span><span class="o">=</span><span class="n">obey_flags</span><span class="p">,</span> <span class="n">print_flags</span><span class="o">=</span><span class="n">print_flags</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="FST.analyze">
+<a class="viewcode-back" href="../../pyfoma.html#pyfoma.fst.FST.analyze">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">analyze</span><span class="p">(</span><span class="bp">self</span><span class="p">:</span> <span class="s1">&#39;FST&#39;</span><span class="p">,</span> <span class="n">word</span><span class="p">,</span> <span class="n">weights</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">tokenize_outputs</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">obey_flags</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">print_flags</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Pass word through FST and return generator that yields all inputs.&quot;&quot;&quot;</span>
+        <span class="k">yield from</span> <span class="bp">self</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="n">word</span><span class="p">,</span> <span class="n">inverse</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">weights</span><span class="o">=</span><span class="n">weights</span><span class="p">,</span> <span class="n">tokenize_outputs</span><span class="o">=</span><span class="n">tokenize_outputs</span><span class="p">,</span> <span class="n">obey_flags</span><span class="o">=</span><span class="n">obey_flags</span><span class="p">,</span> <span class="n">print_flags</span><span class="o">=</span><span class="n">print_flags</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="FST.apply">
+<a class="viewcode-back" href="../../pyfoma.html#pyfoma.fst.FST.apply">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">apply</span><span class="p">(</span><span class="bp">self</span><span class="p">:</span> <span class="s1">&#39;FST&#39;</span><span class="p">,</span> <span class="n">word</span><span class="p">,</span> <span class="n">inverse</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">weights</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">tokenize_outputs</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">obey_flags</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">print_flags</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Pass word through FST and return generator that yields outputs.</span>
+<span class="sd">           if inverse == True, map from range to domain.</span>
+<span class="sd">           weights is by default False. To see the cost, set weights to True.</span>
+<span class="sd">           obey_flags toggles whether invalid flag diacritic</span>
+<span class="sd">           combinations are filtered out. By default, flags are</span>
+<span class="sd">           treated as epsilons in the input. print_flags toggels whether flag</span>
+<span class="sd">           diacritics are printed in the output. &quot;&quot;&quot;</span>
+        <span class="n">IN</span><span class="p">,</span> <span class="n">OUT</span> <span class="o">=</span> <span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="k">if</span> <span class="n">inverse</span> <span class="k">else</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">]</span>  <span class="c1"># Tuple positions for input, output</span>
+        <span class="n">cntr</span> <span class="o">=</span> <span class="n">itertools</span><span class="o">.</span><span class="n">count</span><span class="p">()</span>
+        <span class="n">w</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tokenize_against_alphabet</span><span class="p">(</span><span class="n">word</span><span class="p">)</span>
+        <span class="n">Q</span><span class="p">,</span> <span class="n">output</span> <span class="o">=</span> <span class="p">[],</span> <span class="p">[]</span>
+        <span class="n">heapq</span><span class="o">.</span><span class="n">heappush</span><span class="p">(</span><span class="n">Q</span><span class="p">,</span> <span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="nb">next</span><span class="p">(</span><span class="n">cntr</span><span class="p">),</span> <span class="p">[],</span> <span class="bp">self</span><span class="o">.</span><span class="n">initialstate</span><span class="p">))</span>  <span class="c1"># (cost, -pos, output, state)</span>
+        <span class="n">flag_filter</span> <span class="o">=</span> <span class="n">FlagStringFilter</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">alphabet</span><span class="p">)</span> <span class="k">if</span> <span class="n">obey_flags</span> <span class="k">else</span> <span class="kc">None</span>
+
+        <span class="k">while</span> <span class="n">Q</span><span class="p">:</span>
+            <span class="n">cost</span><span class="p">,</span> <span class="n">negpos</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">output</span><span class="p">,</span> <span class="n">state</span> <span class="o">=</span> <span class="n">heapq</span><span class="o">.</span><span class="n">heappop</span><span class="p">(</span><span class="n">Q</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">state</span> <span class="o">==</span> <span class="kc">None</span> <span class="ow">and</span> <span class="o">-</span><span class="n">negpos</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">w</span><span class="p">)</span> <span class="ow">and</span> <span class="p">(</span><span class="ow">not</span> <span class="n">obey_flags</span> <span class="ow">or</span> <span class="n">flag_filter</span><span class="p">(</span><span class="n">output</span><span class="p">)):</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">print_flags</span><span class="p">:</span>
+                    <span class="n">output</span> <span class="o">=</span> <span class="n">FlagOp</span><span class="o">.</span><span class="n">filter_flags</span><span class="p">(</span><span class="n">output</span><span class="p">)</span>
+                <span class="n">yield_output</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">output</span><span class="p">)</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">tokenize_outputs</span> <span class="k">else</span> <span class="n">output</span>
+                <span class="k">if</span> <span class="n">weights</span> <span class="o">==</span> <span class="kc">False</span><span class="p">:</span>
+                    <span class="k">yield</span> <span class="n">yield_output</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">yield</span> <span class="p">(</span><span class="n">yield_output</span><span class="p">,</span> <span class="n">cost</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="n">state</span> <span class="o">!=</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">state</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">finalstates</span><span class="p">:</span>
+                    <span class="n">heapq</span><span class="o">.</span><span class="n">heappush</span><span class="p">(</span><span class="n">Q</span><span class="p">,</span> <span class="p">(</span><span class="n">cost</span> <span class="o">+</span> <span class="n">state</span><span class="o">.</span><span class="n">finalweight</span><span class="p">,</span> <span class="n">negpos</span><span class="p">,</span> <span class="nb">next</span><span class="p">(</span><span class="n">cntr</span><span class="p">),</span> <span class="n">output</span><span class="p">,</span> <span class="kc">None</span><span class="p">))</span>
+                <span class="k">for</span> <span class="n">lbl</span><span class="p">,</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">state</span><span class="o">.</span><span class="n">all_transitions</span><span class="p">():</span>
+                    <span class="k">if</span> <span class="n">lbl</span><span class="p">[</span><span class="n">IN</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;&#39;</span> <span class="ow">or</span> <span class="n">FlagOp</span><span class="o">.</span><span class="n">is_flag</span><span class="p">(</span><span class="n">lbl</span><span class="p">[</span><span class="n">IN</span><span class="p">]):</span>
+                        <span class="n">heapq</span><span class="o">.</span><span class="n">heappush</span><span class="p">(</span><span class="n">Q</span><span class="p">,</span> <span class="p">(</span><span class="n">cost</span> <span class="o">+</span> <span class="n">t</span><span class="o">.</span><span class="n">weight</span><span class="p">,</span> <span class="n">negpos</span><span class="p">,</span> <span class="nb">next</span><span class="p">(</span><span class="n">cntr</span><span class="p">),</span> <span class="n">output</span> <span class="o">+</span> <span class="p">[</span><span class="n">lbl</span><span class="p">[</span><span class="n">OUT</span><span class="p">]],</span> <span class="n">t</span><span class="o">.</span><span class="n">targetstate</span><span class="p">))</span>
+                    <span class="k">elif</span> <span class="o">-</span><span class="n">negpos</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">w</span><span class="p">):</span>
+                        <span class="n">nextsym</span> <span class="o">=</span> <span class="n">w</span><span class="p">[</span><span class="o">-</span><span class="n">negpos</span><span class="p">]</span> <span class="k">if</span> <span class="n">w</span><span class="p">[</span><span class="o">-</span><span class="n">negpos</span><span class="p">]</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">alphabet</span> <span class="k">else</span> <span class="s1">&#39;.&#39;</span>
+                        <span class="n">appendedsym</span> <span class="o">=</span> <span class="n">w</span><span class="p">[</span><span class="o">-</span><span class="n">negpos</span><span class="p">]</span> <span class="k">if</span> <span class="p">(</span><span class="n">nextsym</span> <span class="o">==</span> <span class="s1">&#39;.&#39;</span> <span class="ow">and</span> <span class="n">lbl</span><span class="p">[</span><span class="n">OUT</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;.&#39;</span><span class="p">)</span> <span class="k">else</span> <span class="n">lbl</span><span class="p">[</span><span class="n">OUT</span><span class="p">]</span>
+                        <span class="k">if</span> <span class="n">nextsym</span> <span class="o">==</span> <span class="n">lbl</span><span class="p">[</span><span class="n">IN</span><span class="p">]:</span>
+                            <span class="n">heapq</span><span class="o">.</span><span class="n">heappush</span><span class="p">(</span><span class="n">Q</span><span class="p">,</span> <span class="p">(</span>
+                            <span class="n">cost</span> <span class="o">+</span> <span class="n">t</span><span class="o">.</span><span class="n">weight</span><span class="p">,</span> <span class="n">negpos</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="nb">next</span><span class="p">(</span><span class="n">cntr</span><span class="p">),</span> <span class="n">output</span> <span class="o">+</span> <span class="p">[</span><span class="n">appendedsym</span><span class="p">],</span> <span class="n">t</span><span class="o">.</span><span class="n">targetstate</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="FST.words">
+<a class="viewcode-back" href="../../pyfoma.html#pyfoma.fst.FST.words">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">words</span><span class="p">(</span><span class="bp">self</span><span class="p">:</span> <span class="s1">&#39;FST&#39;</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;A generator to yield all words. Yay BFS!&quot;&quot;&quot;</span>
+        <span class="n">Q</span> <span class="o">=</span> <span class="n">deque</span><span class="p">([(</span><span class="bp">self</span><span class="o">.</span><span class="n">initialstate</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="p">[])])</span>
+        <span class="k">while</span> <span class="n">Q</span><span class="p">:</span>
+            <span class="n">s</span><span class="p">,</span> <span class="n">cost</span><span class="p">,</span> <span class="n">seq</span> <span class="o">=</span> <span class="n">Q</span><span class="o">.</span><span class="n">popleft</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">s</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">finalstates</span><span class="p">:</span>
+                <span class="k">yield</span> <span class="n">cost</span> <span class="o">+</span> <span class="n">s</span><span class="o">.</span><span class="n">finalweight</span><span class="p">,</span> <span class="n">seq</span>
+            <span class="k">for</span> <span class="n">label</span><span class="p">,</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">s</span><span class="o">.</span><span class="n">all_transitions</span><span class="p">():</span>
+                <span class="n">Q</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">t</span><span class="o">.</span><span class="n">targetstate</span><span class="p">,</span> <span class="n">cost</span> <span class="o">+</span> <span class="n">t</span><span class="o">.</span><span class="n">weight</span><span class="p">,</span> <span class="n">seq</span> <span class="o">+</span> <span class="p">[</span><span class="n">label</span><span class="p">]))</span></div>
+
+
+<div class="viewcode-block" id="FST.tokenize_against_alphabet">
+<a class="viewcode-back" href="../../pyfoma.html#pyfoma.fst.FST.tokenize_against_alphabet">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">tokenize_against_alphabet</span><span class="p">(</span><span class="bp">self</span><span class="p">:</span> <span class="s1">&#39;FST&#39;</span><span class="p">,</span> <span class="n">word</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Tokenize a string using the alphabet of the automaton.&quot;&quot;&quot;</span>
+        <span class="n">tokens</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">start</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">while</span> <span class="n">start</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">word</span><span class="p">):</span>
+            <span class="n">t</span> <span class="o">=</span> <span class="n">word</span><span class="p">[</span><span class="n">start</span><span class="p">]</span>  <span class="c1"># Default is length 1 token unless we find a longer one</span>
+            <span class="k">for</span> <span class="n">length</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">word</span><span class="p">)</span> <span class="o">-</span> <span class="n">start</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>  <span class="c1"># TODO: limit to max length</span>
+                <span class="k">if</span> <span class="n">word</span><span class="p">[</span><span class="n">start</span><span class="p">:</span><span class="n">start</span> <span class="o">+</span> <span class="n">length</span><span class="p">]</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">alphabet</span><span class="p">:</span>  <span class="c1"># of syms in alphabet</span>
+                    <span class="n">t</span> <span class="o">=</span> <span class="n">word</span><span class="p">[</span><span class="n">start</span><span class="p">:</span><span class="n">start</span> <span class="o">+</span> <span class="n">length</span><span class="p">]</span>
+            <span class="n">tokens</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>
+            <span class="n">start</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">tokens</span></div>
+
+
+<div class="viewcode-block" id="FST.todict">
+<a class="viewcode-back" href="../../pyfoma.html#pyfoma.fst.FST.todict">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">todict</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Create a dictionary form of the FST for export to</span>
+<span class="sd">        JSON.  May be post-processed for optimization in Javascript.&quot;&quot;&quot;</span>
+        <span class="c1"># Traverse, renumbering all the states, because:</span>
+        <span class="c1"># 1. It removes unreachable states and saves space/bandwidth</span>
+        <span class="c1"># 2. The JS code requires the initial state to have number 0</span>
+        <span class="c1"># 3. pyfoma uses a `set` to store states, and sets are not</span>
+        <span class="c1">#    order-preserving in Python, while dicts are, so two FSTs</span>
+        <span class="c1">#    created with the same input to `FST.regex` will end up with</span>
+        <span class="c1">#    different state numberings and thus different JSON unless we</span>
+        <span class="c1">#    enforce an ordering on them here.</span>
+        <span class="n">q</span> <span class="o">=</span> <span class="n">deque</span><span class="p">([</span><span class="bp">self</span><span class="o">.</span><span class="n">initialstate</span><span class="p">])</span>
+        <span class="n">states</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">State</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">statenums</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">while</span> <span class="n">q</span><span class="p">:</span>
+            <span class="n">state</span> <span class="o">=</span> <span class="n">q</span><span class="o">.</span><span class="n">popleft</span><span class="p">()</span>
+            <span class="k">if</span> <span class="nb">id</span><span class="p">(</span><span class="n">state</span><span class="p">)</span> <span class="ow">in</span> <span class="n">statenums</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="n">statenums</span><span class="p">[</span><span class="nb">id</span><span class="p">(</span><span class="n">state</span><span class="p">)]</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">states</span><span class="p">)</span>
+            <span class="n">states</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
+            <span class="c1"># Make sure to sort here too as the order of insertion will</span>
+            <span class="c1"># vary as a consequence of different ordering of states</span>
+            <span class="k">for</span> <span class="n">label</span><span class="p">,</span> <span class="n">arcs</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">state</span><span class="o">.</span><span class="n">transitions</span><span class="o">.</span><span class="n">items</span><span class="p">(),</span>
+                                      <span class="n">key</span><span class="o">=</span><span class="n">operator</span><span class="o">.</span><span class="n">itemgetter</span><span class="p">(</span><span class="mi">0</span><span class="p">)):</span>
+                <span class="c1"># FIXME: it is not possible to guarantee the ordering</span>
+                <span class="c1"># here.  Consider not using `set` for arcs.</span>
+                <span class="k">for</span> <span class="n">arc</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">arcs</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="n">operator</span><span class="o">.</span><span class="n">attrgetter</span><span class="p">(</span><span class="s2">&quot;weight&quot;</span><span class="p">)):</span>
+                    <span class="k">if</span> <span class="nb">id</span><span class="p">(</span><span class="n">arc</span><span class="o">.</span><span class="n">targetstate</span><span class="p">)</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">statenums</span><span class="p">:</span>
+                        <span class="n">q</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">arc</span><span class="o">.</span><span class="n">targetstate</span><span class="p">)</span>
+        <span class="n">transitions</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]]]</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="n">finals</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="n">alphabet</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">src</span><span class="p">,</span> <span class="n">state</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">states</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">label</span><span class="p">,</span> <span class="n">arcs</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">state</span><span class="o">.</span><span class="n">transitions</span><span class="o">.</span><span class="n">items</span><span class="p">(),</span> <span class="n">key</span><span class="o">=</span><span class="n">operator</span><span class="o">.</span><span class="n">itemgetter</span><span class="p">(</span><span class="mi">0</span><span class="p">)):</span>
+                <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">label</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                    <span class="n">isym</span> <span class="o">=</span> <span class="n">osym</span> <span class="o">=</span> <span class="n">label</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">isym</span><span class="p">,</span> <span class="n">osym</span> <span class="o">=</span> <span class="n">label</span>
+                <span class="k">for</span> <span class="n">sym</span> <span class="ow">in</span> <span class="n">isym</span><span class="p">,</span> <span class="n">osym</span><span class="p">:</span>
+                    <span class="c1"># Omit epsilon from symbol table</span>
+                    <span class="k">if</span> <span class="n">sym</span> <span class="o">==</span> <span class="s2">&quot;&quot;</span><span class="p">:</span>
+                        <span class="k">continue</span>
+                    <span class="k">if</span> <span class="n">sym</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">alphabet</span><span class="p">:</span>
+                        <span class="c1"># Reserve 0, 1, 2 for epsilon, identity, unknown</span>
+                        <span class="c1"># (actually not necessary)</span>
+                        <span class="n">alphabet</span><span class="p">[</span><span class="n">sym</span><span class="p">]</span> <span class="o">=</span> <span class="mi">3</span> <span class="o">+</span> <span class="nb">len</span><span class="p">(</span><span class="n">alphabet</span><span class="p">)</span>
+                    <span class="n">sym</span> <span class="o">=</span> <span class="n">pyre</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;\?|&quot;</span><span class="p">,</span> <span class="sa">r</span><span class="s2">&quot;\|&quot;</span><span class="p">,</span> <span class="n">sym</span><span class="p">)</span>
+                <span class="n">tlabel</span> <span class="o">=</span> <span class="n">isym</span> <span class="k">if</span> <span class="n">isym</span> <span class="o">==</span> <span class="n">osym</span> <span class="k">else</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">isym</span><span class="si">}</span><span class="s2">|</span><span class="si">{</span><span class="n">osym</span><span class="si">}</span><span class="s2">&quot;</span>
+                <span class="c1"># Nothing to do to the symbols beyond that as pyfoma</span>
+                <span class="c1"># already uses the same convention of epsilon=&#39;&#39;, and JSON</span>
+                <span class="c1"># encoding will take care of escaping everything for us.</span>
+                <span class="k">for</span> <span class="n">arc</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">arcs</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="n">operator</span><span class="o">.</span><span class="n">attrgetter</span><span class="p">(</span><span class="s2">&quot;weight&quot;</span><span class="p">)):</span>
+                    <span class="n">transitions</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="n">src</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="n">tlabel</span><span class="p">,</span> <span class="p">[])</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                        <span class="c1"># Ignore weights for now (but will support soon)</span>
+                        <span class="n">statenums</span><span class="p">[</span><span class="nb">id</span><span class="p">(</span><span class="n">arc</span><span class="o">.</span><span class="n">targetstate</span><span class="p">)]</span>
+                    <span class="p">)</span>
+            <span class="k">if</span> <span class="n">state</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">finalstates</span><span class="p">:</span>
+                <span class="n">finals</span><span class="p">[</span><span class="n">src</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="k">return</span> <span class="p">{</span>
+            <span class="s2">&quot;transitions&quot;</span><span class="p">:</span> <span class="n">transitions</span><span class="p">,</span>
+            <span class="s2">&quot;alphabet&quot;</span><span class="p">:</span> <span class="n">alphabet</span><span class="p">,</span>
+            <span class="s2">&quot;finals&quot;</span><span class="p">:</span> <span class="n">finals</span><span class="p">,</span>
+        <span class="p">}</span></div>
+
+
+<div class="viewcode-block" id="FST.tojs">
+<a class="viewcode-back" href="../../pyfoma.html#pyfoma.fst.FST.tojs">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">tojs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">jsnetname</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;myNet&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Create Javascript compatible with `foma_apply_down.js`&quot;&quot;&quot;</span>
+        <span class="n">fstdict</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">todict</span><span class="p">()</span>
+        <span class="c1"># Optimize for foma_apply_down.js</span>
+        <span class="n">transitions</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">src</span><span class="p">,</span> <span class="n">out</span> <span class="ow">in</span> <span class="n">fstdict</span><span class="p">[</span><span class="s2">&quot;transitions&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">for</span> <span class="n">label</span><span class="p">,</span> <span class="n">arcs</span> <span class="ow">in</span> <span class="n">out</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="n">syms</span> <span class="o">=</span> <span class="n">pyre</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;(?&lt;!</span><span class="se">\\</span><span class="s2">)\|&quot;</span><span class="p">,</span> <span class="n">label</span><span class="p">)</span>
+                <span class="n">isym</span> <span class="o">=</span> <span class="n">syms</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+                <span class="n">osym</span> <span class="o">=</span> <span class="n">syms</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+                <span class="n">transitions</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">src</span><span class="si">}</span><span class="s2">|</span><span class="si">{</span><span class="n">isym</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="p">[])</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span>
+                    <span class="c1"># NOTE: There is no reason for these to be</span>
+                    <span class="c1"># separate objects, but foma_apply_down.js wants</span>
+                    <span class="c1"># them that way.</span>
+                    <span class="p">{</span><span class="n">arc</span><span class="p">:</span> <span class="n">osym</span><span class="p">}</span> <span class="k">for</span> <span class="n">arc</span> <span class="ow">in</span> <span class="n">arcs</span>
+                <span class="p">)</span>
+        <span class="c1"># NOTE: in reality foma_apply_down.js only needs the *input*</span>
+        <span class="c1"># symbols, so we could further optimize this.</span>
+        <span class="n">fstdict</span><span class="p">[</span><span class="s2">&quot;s&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">fstdict</span><span class="p">[</span><span class="s2">&quot;alphabet&quot;</span><span class="p">]</span>
+        <span class="k">del</span> <span class="n">fstdict</span><span class="p">[</span><span class="s2">&quot;alphabet&quot;</span><span class="p">]</span>
+        <span class="n">fstdict</span><span class="p">[</span><span class="s2">&quot;maxlen&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">k</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s1">&#39;utf-16le&#39;</span><span class="p">))</span>
+                                <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">fstdict</span><span class="p">[</span><span class="s2">&quot;s&quot;</span><span class="p">])</span> <span class="o">//</span> <span class="mi">2</span>
+        <span class="n">fstdict</span><span class="p">[</span><span class="s2">&quot;f&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">fstdict</span><span class="p">[</span><span class="s2">&quot;finals&quot;</span><span class="p">]</span>
+        <span class="k">del</span> <span class="n">fstdict</span><span class="p">[</span><span class="s2">&quot;finals&quot;</span><span class="p">]</span>
+        <span class="n">fstdict</span><span class="p">[</span><span class="s2">&quot;t&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">transitions</span>
+        <span class="k">del</span> <span class="n">fstdict</span><span class="p">[</span><span class="s2">&quot;transitions&quot;</span><span class="p">]</span>
+        <span class="k">return</span> <span class="s2">&quot; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">((</span><span class="s2">&quot;var&quot;</span><span class="p">,</span> <span class="n">jsnetname</span><span class="p">,</span> <span class="s2">&quot;=&quot;</span><span class="p">,</span>
+                         <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">fstdict</span><span class="p">,</span> <span class="n">ensure_ascii</span><span class="o">=</span><span class="kc">False</span><span class="p">),</span> <span class="s2">&quot;;&quot;</span><span class="p">))</span></div>
+</div>
+
+    <span class="c1"># endregion</span>
+
+
+<div class="viewcode-block" id="Transition">
+<a class="viewcode-back" href="../../pyfoma.html#pyfoma.fst.Transition">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Transition</span><span class="p">:</span>
+    <span class="vm">__slots__</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;targetstate&#39;</span><span class="p">,</span> <span class="s1">&#39;label&#39;</span><span class="p">,</span> <span class="s1">&#39;weight&#39;</span><span class="p">]</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">targetstate</span><span class="p">,</span> <span class="n">label</span><span class="p">,</span> <span class="n">weight</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">targetstate</span> <span class="o">=</span> <span class="n">targetstate</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">label</span> <span class="o">=</span> <span class="n">label</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">weight</span> <span class="o">=</span> <span class="n">weight</span></div>
+
+
+
+<div class="viewcode-block" id="State">
+<a class="viewcode-back" href="../../pyfoma.html#pyfoma.fst.State">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">State</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">finalweight</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">name</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
+        <span class="vm">__slots__</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;transitions&#39;</span><span class="p">,</span> <span class="s1">&#39;_transitionsin&#39;</span><span class="p">,</span> <span class="s1">&#39;_transitionsout&#39;</span><span class="p">,</span> <span class="s1">&#39;finalweight&#39;</span><span class="p">,</span> <span class="s1">&#39;name&#39;</span><span class="p">]</span>
+        <span class="c1"># Index both the first and last elements lazily (e.g. compose needs it)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">transitions</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>     <span class="c1"># (l_1,...,l_n):{transition1, transition2, ...}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_transitionsin</span> <span class="o">=</span> <span class="kc">None</span>    <span class="c1"># l_1:(label, transition1), (label, transition2), ... }</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_transitionsout</span> <span class="o">=</span> <span class="kc">None</span>   <span class="c1"># l_n:(label, transition1), (label, transition2, ...)}</span>
+        <span class="k">if</span> <span class="n">finalweight</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">finalweight</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="s2">&quot;inf&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">finalweight</span> <span class="o">=</span> <span class="n">finalweight</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">name</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">transitionsin</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Returns a dictionary of the transitions from a state, indexed by the input</span>
+<span class="sd">           label, i.e. the first member of the label tuple.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_transitionsin</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_transitionsin</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">set</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">label</span><span class="p">,</span> <span class="n">newtrans</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">transitions</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">newtrans</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_transitionsin</span><span class="p">[</span><span class="n">label</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span> <span class="o">|=</span> <span class="p">{(</span><span class="n">label</span><span class="p">,</span> <span class="n">t</span><span class="p">)}</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_transitionsin</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">transitionsout</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Returns a dictionary of the transitions from a state, indexed by the output</span>
+<span class="sd">           label, i.e. the last member of the label tuple.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_transitionsout</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_transitionsout</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">set</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">label</span><span class="p">,</span> <span class="n">newtrans</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">transitions</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">newtrans</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_transitionsout</span><span class="p">[</span><span class="n">label</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]]</span> <span class="o">|=</span> <span class="p">{(</span><span class="n">label</span><span class="p">,</span> <span class="n">t</span><span class="p">)}</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_transitionsout</span>
+
+<div class="viewcode-block" id="State.rename_label">
+<a class="viewcode-back" href="../../pyfoma.html#pyfoma.fst.State.rename_label">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">rename_label</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">original</span><span class="p">,</span> <span class="n">new</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Changes labels in a state&#39;s transitions from original to new.&quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">transitions</span><span class="p">[</span><span class="n">original</span><span class="p">]:</span>
+            <span class="n">t</span><span class="o">.</span><span class="n">label</span> <span class="o">=</span> <span class="n">new</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">transitions</span><span class="p">[</span><span class="n">new</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">transitions</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">new</span><span class="p">,</span> <span class="nb">set</span><span class="p">())</span> <span class="o">|</span> <span class="bp">self</span><span class="o">.</span><span class="n">transitions</span><span class="p">[</span><span class="n">original</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">transitions</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">original</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="State.remove_transitions_to_targets">
+<a class="viewcode-back" href="../../pyfoma.html#pyfoma.fst.State.remove_transitions_to_targets">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">remove_transitions_to_targets</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">targets</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Remove all transitions from self to any state in the set targets.&quot;&quot;&quot;</span>
+        <span class="n">newt</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">label</span><span class="p">,</span> <span class="n">transitions</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">transitions</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="n">newt</span><span class="p">[</span><span class="n">label</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="n">t</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">transitions</span> <span class="k">if</span> <span class="n">t</span><span class="o">.</span><span class="n">targetstate</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">targets</span><span class="p">}</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">newt</span><span class="p">[</span><span class="n">label</span><span class="p">])</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">newt</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">label</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">transitions</span> <span class="o">=</span> <span class="n">newt</span></div>
+
+
+<div class="viewcode-block" id="State.add_transition">
+<a class="viewcode-back" href="../../pyfoma.html#pyfoma.fst.State.add_transition">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">add_transition</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">,</span> <span class="n">label</span><span class="p">,</span> <span class="n">weight</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Add transition from self to other with label and weight.&quot;&quot;&quot;</span>
+        <span class="n">newtrans</span> <span class="o">=</span> <span class="n">Transition</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="n">label</span><span class="p">,</span> <span class="n">weight</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">transitions</span><span class="p">[</span><span class="n">label</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">transitions</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="nb">set</span><span class="p">())</span> <span class="o">|</span> <span class="p">{</span><span class="n">newtrans</span><span class="p">}</span></div>
+
+
+<div class="viewcode-block" id="State.all_transitions">
+<a class="viewcode-back" href="../../pyfoma.html#pyfoma.fst.State.all_transitions">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">all_transitions</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Generator for all transitions out from a given state.&quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">label</span><span class="p">,</span> <span class="n">transitions</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">transitions</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">transitions</span><span class="p">:</span>
+                <span class="k">yield</span> <span class="n">label</span><span class="p">,</span> <span class="n">t</span></div>
+
+
+<div class="viewcode-block" id="State.all_targets">
+<a class="viewcode-back" href="../../pyfoma.html#pyfoma.fst.State.all_targets">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">all_targets</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">set</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Returns the set of states a state has transitions to.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">{</span><span class="n">t</span><span class="o">.</span><span class="n">targetstate</span> <span class="k">for</span> <span class="n">tr</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">transitions</span><span class="o">.</span><span class="n">values</span><span class="p">()</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">tr</span><span class="p">}</span></div>
+
+
+<div class="viewcode-block" id="State.all_epsilon_targets_cheapest">
+<a class="viewcode-back" href="../../pyfoma.html#pyfoma.fst.State.all_epsilon_targets_cheapest">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">all_epsilon_targets_cheapest</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Returns a dict of states a state transitions to (cheapest) with epsilon.&quot;&quot;&quot;</span>
+        <span class="n">targets</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="s2">&quot;inf&quot;</span><span class="p">))</span>
+        <span class="k">for</span> <span class="n">lbl</span><span class="p">,</span> <span class="n">tr</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">transitions</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">if</span> <span class="nb">all</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">sublabel</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span> <span class="k">for</span> <span class="n">sublabel</span> <span class="ow">in</span> <span class="n">lbl</span><span class="p">):</span> <span class="c1"># funky epsilon-check</span>
+                <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">tr</span><span class="p">:</span>
+                    <span class="n">targets</span><span class="p">[</span><span class="n">s</span><span class="o">.</span><span class="n">targetstate</span><span class="p">]</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">targets</span><span class="p">[</span><span class="n">s</span><span class="o">.</span><span class="n">targetstate</span><span class="p">],</span> <span class="n">s</span><span class="o">.</span><span class="n">weight</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">targets</span></div>
+
+
+<div class="viewcode-block" id="State.all_targets_cheapest">
+<a class="viewcode-back" href="../../pyfoma.html#pyfoma.fst.State.all_targets_cheapest">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">all_targets_cheapest</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Returns a dict of states a state transitions to (cheapest).&quot;&quot;&quot;</span>
+        <span class="n">targets</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="s2">&quot;inf&quot;</span><span class="p">))</span>
+        <span class="k">for</span> <span class="n">tr</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">transitions</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
+            <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">tr</span><span class="p">:</span>
+                <span class="n">targets</span><span class="p">[</span><span class="n">s</span><span class="o">.</span><span class="n">targetstate</span><span class="p">]</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">targets</span><span class="p">[</span><span class="n">s</span><span class="o">.</span><span class="n">targetstate</span><span class="p">],</span> <span class="n">s</span><span class="o">.</span><span class="n">weight</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">targets</span></div>
+</div>
+
+</pre></div>
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../../index.html">PyFoma</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../../index.html">Documentation overview</a><ul>
+  <li><a href="../index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2025, Mans Hulden and Michael Ginn.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 8.2.1</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>
