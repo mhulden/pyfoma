@@ -9,3 +9,6 @@ Details about the regular expression compiler.
 
 `Algorithms <https://github.com/mhulden/pyfoma/docs/examples/RegularExpressionCompiler.ipynb>`_:
 Details about many of the algorithms in PyFoma.
+
+`Soundex Algorithm <https://github.com/mhulden/pyfoma/docs/examples/Example%20-%20Soundex.ipynb>`_:
+Algorithm that encodes phonetically similar names.
