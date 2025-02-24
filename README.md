@@ -20,6 +20,8 @@ Next, check out the documentation!
 
 ## Contributing
 
+<!-- TODO: Include details on how to open PRs -->
+
 ### Rebuilding the documentation
 
 ```bash
