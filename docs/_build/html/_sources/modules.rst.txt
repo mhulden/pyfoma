@@ -1,4 +1,4 @@
-pyfoma
+API Reference
 ======
 
 .. toctree::

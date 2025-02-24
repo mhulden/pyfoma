@@ -3,10 +3,11 @@ Getting Started
 
 .. code-block:: guess
 
+   # pyfoma requires Python >= 3.6
    pip install pyfoma
 
 
-Build weighted and unweighted automata and transducers from regular expressions:
+Build weighted and unweighted automata and transducers from regular expressions, using the :any:`FST.re` constructor:
 
 .. code-block:: python
 
@@ -16,7 +17,7 @@ Build weighted and unweighted automata and transducers from regular expressions:
 
 .. image:: examples/images/quickstart1.png
 
-... or through low-level specification
+... or through low-level specification, using the default :class:`FST` constructor and :py:meth:`add_transition`:
 
 .. code-block:: python
 

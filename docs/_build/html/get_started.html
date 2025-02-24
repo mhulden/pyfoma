@@ -51,7 +51,7 @@
 </li>
 <li class="toctree-l1"><a class="reference internal" href="history.html">History</a></li>
 <li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
-<li class="toctree-l1"><a class="reference internal" href="modules.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="modules.html">pyfoma</a></li>
 </ul>
 
         </div>
@@ -80,17 +80,18 @@
              
   <section id="getting-started">
 <h1>Getting Started<a class="headerlink" href="#getting-started" title="Link to this heading"></a></h1>
-<div class="highlight-guess notranslate"><div class="highlight"><pre><span></span>pip install pyfoma
+<div class="highlight-guess notranslate"><div class="highlight"><pre><span></span># pyfoma requires Python &gt;= 3.6
+pip install pyfoma
 </pre></div>
 </div>
-<p>Build weighted and unweighted automata and transducers from regular expressions:</p>
+<p>Build weighted and unweighted automata and transducers from regular expressions, using the <a class="reference internal" href="pyfoma.html#pyfoma.fst.FST.re" title="pyfoma.fst.FST.re"><code class="xref any py py-meth docutils literal notranslate"><span class="pre">FST.re</span></code></a> constructor:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">pyfoma</span><span class="w"> </span><span class="kn">import</span> <span class="n">FST</span>
 <span class="n">myfst</span> <span class="o">=</span> <span class="n">FST</span><span class="o">.</span><span class="n">re</span><span class="p">(</span><span class="s2">&quot;(cl|n|s)?e(ve|a)r&quot;</span><span class="p">)</span>
 <span class="n">myfst</span><span class="o">.</span><span class="n">view</span><span class="p">()</span>
 </pre></div>
 </div>
 <img alt="_images/quickstart1.png" src="_images/quickstart1.png" />
-<p>… or through low-level specification</p>
+<p>… or through low-level specification, using the default <code class="xref py py-class docutils literal notranslate"><span class="pre">FST</span></code> constructor and <code class="xref py py-meth docutils literal notranslate"><span class="pre">add_transition()</span></code>:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">pyfoma</span><span class="w"> </span><span class="kn">import</span> <span class="n">FST</span><span class="p">,</span> <span class="n">State</span>
 
 <span class="n">myfst</span> <span class="o">=</span> <span class="n">FST</span><span class="p">()</span>            <span class="c1"># Init object</span>
