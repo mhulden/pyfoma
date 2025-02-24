@@ -1,14 +1,6 @@
 pyfoma package
 ==============
 
-Subpackages
------------
-
-.. toctree::
-   :maxdepth: 4
-
-   pyfoma.private
-
 Submodules
 ----------
 

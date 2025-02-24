@@ -3,3 +3,4 @@
 # Documentation
 sphinx
 python-docs-theme
+graphviz

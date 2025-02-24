@@ -2,14 +2,19 @@
 
 """PyFoma Finite-State Tool."""
 
-import heapq, json, itertools, operator, re as pyre
-from collections import deque, defaultdict
-from typing import Dict, Any, Iterable, List, TextIO, cast
+import heapq
+import itertools
+import json
+import operator
+import pickle
+import re as pyre
+import subprocess
+from collections import defaultdict, deque
 from os import PathLike
 from pathlib import Path
-from pyfoma.flag import FlagStringFilter, FlagOp
-import subprocess
-import pickle
+from typing import Any, Dict, Iterable, List, TextIO, cast
+
+from pyfoma.flag import FlagOp, FlagStringFilter
 
 
 def re(*args, **kwargs):
@@ -22,9 +27,8 @@ def _multichar_matcher(multichar_symbols: Iterable[str]) -> pyre.Pattern:
     ordered = [sym for sym in multichar_symbols if len(sym) > 1]
     ordered.sort(key=len, reverse=True)
     return pyre.compile(
-        r"('(?:\\'|[^'])*')|("
-        + "|".join(pyre.escape(sym) for sym in ordered)
-        + r")")
+        r"('(?:\\'|[^'])*')|(" + "|".join(pyre.escape(sym) for sym in ordered) + r")"
+    )
 
 
 def _multichar_replacer(matchobj: pyre.Match):
@@ -37,14 +41,14 @@ def _multichar_replacer(matchobj: pyre.Match):
 
 # TODO: Move all algorithm functions to the algorithms module
 class FST:
-
     # region Initialization Methods
-    def __init__(self, label:tuple=None, weight=0.0, alphabet=set()):
+    def __init__(self, label: tuple = None, weight=0.0, alphabet=set()):
         """Creates an FST-structure with a single state.
 
-        :param label: create a two-state FST that accepts label
-        :param weight: add a weight to the final state
-        :param alphabet: declare an alphabet explicitly
+        Args:
+            label (tuple): create a two-state FST that accepts label
+            weight (float): add a weight to the final state
+            alphabet (set[str]): declare an alphabet explicitly
 
         If 'label' is given, a two-state automaton is created with label as the
         only transition from the initial state to the final state.
@@ -66,7 +70,7 @@ class FST:
         self.finalstates = set()
         """A set of all final (accepting) states of the FST"""
 
-        if label == ('',):  # EPSILON
+        if label == ("",):  # EPSILON
             self.finalstates.add(self.initialstate)
             self.initialstate.finalweight = weight
         elif label is not None:
@@ -78,13 +82,13 @@ class FST:
             self.initialstate.add_transition(targetstate, label, 0.0)
 
     @classmethod
-    def character_ranges(cls, ranges, complement = False) -> 'FST':
+    def character_ranges(cls, ranges, complement=False) -> "FST":
         """Returns a two-state FSM from a list of unicode code point range pairs.
-           Keyword arguments:
-           complement -- if True, the character class is negated, i.e. [^ ... ], and
-           a two-state FST is returned with the single label . and all the symbols in
-           the character class are put in the alphabet.
-           """
+        Keyword arguments:
+        complement -- if True, the character class is negated, i.e. [^ ... ], and
+        a two-state FST is returned with the single label . and all the symbols in
+        the character class are put in the alphabet.
+        """
         newfst = cls()
         secondstate = State()
         newfst.states.add(secondstate)
@@ -96,23 +100,28 @@ class FST:
                 if symbol not in alphabet:
                     alphabet |= {chr(symbol)}
                     if not complement:
-                        newfst.initialstate.add_transition(secondstate, (chr(symbol),), 0.0)
+                        newfst.initialstate.add_transition(
+                            secondstate, (chr(symbol),), 0.0
+                        )
         if complement:
-            newfst.initialstate.add_transition(secondstate, ('.',), 0.0)
-            alphabet.add('.')
+            newfst.initialstate.add_transition(secondstate, (".",), 0.0)
+            alphabet.add(".")
         newfst.alphabet = alphabet
         return newfst
 
     @classmethod
-    def regex(cls, regularexpression, defined = {}, functions = set(), multichar_symbols=None):
+    def regex(
+        cls, regularexpression, defined={}, functions=set(), multichar_symbols=None
+    ):
         """Compile a regular expression and return the resulting FST.
-           Keyword arguments:
-           defined -- a dictionary of defined FSTs that the compiler can access whenever
-                      a defined network is referenced in the regex, e.g. $vowel
-           functions -- a set of Python functions that the compiler can access when a function
-                       is referenced in the regex, e.g. $^myfunc(...)
+        Keyword arguments:
+        defined -- a dictionary of defined FSTs that the compiler can access whenever
+                   a defined network is referenced in the regex, e.g. $vowel
+        functions -- a set of Python functions that the compiler can access when a function
+                    is referenced in the regex, e.g. $^myfunc(...)
         """
-        import pyfoma.private.regexparse as regexparse
+        import pyfoma._private.regexparse as regexparse
+
         if multichar_symbols is not None:
             escaper = _multichar_matcher(multichar_symbols)
             regularexpression = escaper.sub(_multichar_replacer, regularexpression)
@@ -134,24 +143,25 @@ class FST:
         escaper = None
         if multichar_symbols is not None:
             escaper = _multichar_matcher(multichar_symbols)
+
         def _rlg_tokenize(w):
-            if w == '':
-                return ['']
+            if w == "":
+                return [""]
             if escaper is not None:
                 w = escaper.sub(_multichar_replacer, w)
             tokens = []
             tok_re = r"'(?P<multi>'|(?:\\'|[^'])*)'|\\(?P<esc>(.))|(?P<single>(.))"
             for mo in pyre.finditer(tok_re, w):
                 token = mo.group(mo.lastgroup)
-                if token == " " and mo.lastgroup == 'single':
+                if token == " " and mo.lastgroup == "single":
                     token = ""  # normal spaces for alignment, escaped for actual
                 elif mo.lastgroup == "multi":
                     token = token.replace(r"\'", "'")
                 tokens.append(token)
             return tokens
 
-        newfst = FST(alphabet = set())
-        statedict = {name:State(name = name) for name in grammar.keys() | {"#"}}
+        newfst = FST(alphabet=set())
+        statedict = {name: State(name=name) for name in grammar.keys() | {"#"}}
         newfst.initialstate = statedict[startsymbol]
         newfst.finalstates = {statedict["#"]}
         statedict["#"].finalweight = 0.0
@@ -164,12 +174,15 @@ class FST:
                 target = rule[1]
                 i = _rlg_tokenize(lhs[0])
                 o = i if len(lhs) == 1 else _rlg_tokenize(lhs[1])
-                newfst.alphabet |= {sym for sym in i + o if sym != ''}
-                for ii, oo, idx in itertools.zip_longest(i, o, range(max(len(i), len(o))),
-                    fillvalue = ''):
+                newfst.alphabet |= {sym for sym in i + o if sym != ""}
+                for ii, oo, idx in itertools.zip_longest(
+                    i, o, range(max(len(i), len(o))), fillvalue=""
+                ):
                     w = 0.0
                     if idx == max(len(i), len(o)) - 1:  # dump weight on last transition
-                        targetstate = statedict[target] # before reaching another lexstate
+                        targetstate = statedict[
+                            target
+                        ]  # before reaching another lexstate
                         w = 0.0 if len(rule) < 3 else float(rule[2])
                     else:
                         targetstate = State()
@@ -187,20 +200,20 @@ class FST:
         Args:
             path (str): The path to save to (without a file extension)
         """
-        if not path.endswith('.fst'):
-            path = path + '.fst'
-        with open(path, 'wb') as f:
+        if not path.endswith(".fst"):
+            path = path + ".fst"
+        with open(path, "wb") as f:
             pickle.dump(self, f)
 
     @classmethod
-    def load(cls, path: str) -> 'FST':
+    def load(cls, path: str) -> "FST":
         """Loads an FST from a .fst file.
         Args:
             path (str): The path to load from. Must be a `.fst` file
         """
-        if not path.endswith('.fst'):
-            path = path + '.fst'
-        with open(path, 'rb') as f:
+        if not path.endswith(".fst"):
+            path = path + ".fst"
+        with open(path, "rb") as f:
             fst = pickle.load(f)
         return fst
 
@@ -251,8 +264,9 @@ class FST:
             states.append(state)
             # Make sure to sort here too as the order of insertion will
             # vary as a consequence of different ordering of states
-            for label, arcs in sorted(state.transitions.items(),
-                                      key=operator.itemgetter(0)):
+            for label, arcs in sorted(
+                state.transitions.items(), key=operator.itemgetter(0)
+            ):
                 # FIXME: it is not possible to guarantee the ordering
                 # here.  Consider not using `set` for arcs.
                 for arc in sorted(arcs, key=operator.attrgetter("weight")):
@@ -269,10 +283,11 @@ class FST:
 
         def output_state(s: State, outfh: TextIO):
             name = ssymtab[id(s)]
-            for label, arcs in sorted(state.transitions.items(),
-                                      key=operator.itemgetter(0)):
+            for label, arcs in sorted(
+                state.transitions.items(), key=operator.itemgetter(0)
+            ):
                 if len(label) == 1:
-                    isym = osym = (label[0] or epsilon)
+                    isym = osym = label[0] or epsilon
                 else:
                     isym, osym = ((x or epsilon) for x in label)
                 if isym not in isyms:
@@ -307,8 +322,8 @@ class FST:
         with open(osympath, "wt") as outfh:
             for name, idx in osyms.items():
                 print(f"{name}\t{idx}", file=outfh)
-    # endregion
 
+    # endregion
 
     # region Utility Methods
 
@@ -324,8 +339,8 @@ class FST:
         """Generate an AT&T string representing the FST."""
         # Number states arbitrarily based on id()
         ids = [id(s) for s in self.states if s != self.initialstate]
-        statenums = {ids[i]:i+1 for i in range(len(ids))}
-        statenums[id(self.initialstate)] = 0 # The initial state is always 0
+        statenums = {ids[i]: i + 1 for i in range(len(ids))}
+        statenums[id(self.initialstate)] = 0  # The initial state is always 0
         st = ""
         for s in self.states:
             if len(s.transitions) > 0:
@@ -337,12 +352,15 @@ class FST:
                     # You get Foma's default here since it cannot be configured
                     att_label = ["@0@" if sym == "" else sym for sym in att_label]
                     for transition in s.transitions[label]:
-                        st += '{}\t{}\t{}\t{}\n'.format(statenums[id(s)],\
-                        statenums[id(transition.targetstate)], '\t'.join(att_label),\
-                        transition.weight)
+                        st += "{}\t{}\t{}\t{}\n".format(
+                            statenums[id(s)],
+                            statenums[id(transition.targetstate)],
+                            "\t".join(att_label),
+                            transition.weight,
+                        )
         for s in self.states:
             if s in self.finalstates:
-                st += '{}\t{}\n'.format(statenums[id(s)], s.finalweight)
+                st += "{}\t{}\n".format(statenums[id(s)], s.finalweight)
         return st
 
     def __and__(self, other):
@@ -371,100 +389,131 @@ class FST:
 
     def become(self, other):
         """Hacky or what? We use this to mutate self for those algorithms that don't directly do it."""
-        self.alphabet, self.initialstate, self.states, self.finalstates = \
-        other.alphabet, other.initialstate, other.states, other.finalstates
+        self.alphabet, self.initialstate, self.states, self.finalstates = (
+            other.alphabet,
+            other.initialstate,
+            other.states,
+            other.finalstates,
+        )
         return self
 
-    def number_unnamed_states(self, force = False) -> dict:
+    def number_unnamed_states(self, force=False) -> dict:
         """Sequentially number those states that don't have the 'name' attribute.
-           If 'force == True', number all states."""
+        If 'force == True', number all states."""
         cntr = itertools.count()
         ordered = [self.initialstate] + list(self.states - {self.initialstate})
-        return {id(s):(next(cntr) if s.name == None or force == True else s.name) for s in ordered}
+        return {
+            id(s): (next(cntr) if s.name == None or force == True else s.name)
+            for s in ordered
+        }
 
     def cleanup_sigma(self):
         """Remove symbols if they are no longer needed, including . ."""
         seen = {sym for _, lbl, _ in self.all_transitions(self.states) for sym in lbl}
-        if '.' not in seen:
+        if "." not in seen:
             self.alphabet &= seen
         return self
 
     def check_graphviz_installed(self):
         try:
-            subprocess.run(["dot", "-V"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.run(
+                ["dot", "-V"],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
             return True
         except (subprocess.CalledProcessError, FileNotFoundError):
             return False
 
-    def view(self, raw=False, show_weights=False, show_alphabet=True) -> 'graphviz.Digraph':
+    def view(
+        self, raw=False, show_weights=False, show_alphabet=True
+    ) -> "graphviz.Digraph":
         """Creates a 'graphviz.Digraph' object to view the FST. Will automatically display the FST in Jupyter.
 
-            :param raw: if True, show label tuples and weights unformatted
-            :param show_weights: force display of weights even if 0.0
-            :param show_alphabet: displays the alphabet below the FST
-            :return: A Digraph object which will automatically display in Jupyter.
+         :param raw: if True, show label tuples and weights unformatted
+         :param show_weights: force display of weights even if 0.0
+         :param show_alphabet: displays the alphabet below the FST
+         :return: A Digraph object which will automatically display in Jupyter.
 
-           If you would like to display the FST from a non-Jupyter environment, please use :code:`FST.render`
+        If you would like to display the FST from a non-Jupyter environment, please use :code:`FST.render`
         """
         import graphviz
+
         if not self.check_graphviz_installed():
-            raise EnvironmentError("Graphviz executable not found. Please install [Graphviz](https://www.graphviz.org/download/). On macOS, use `brew install graphviz`.")
+            raise EnvironmentError(
+                "Graphviz executable not found. Please install [Graphviz](https://www.graphviz.org/download/). On macOS, use `brew install graphviz`."
+            )
 
         def _float_format(num):
             if not show_weights:
                 return ""
-            s = '{0:.2f}'.format(num).rstrip('0').rstrip('.')
-            s = '0' if s == '-0' else s
+            s = "{0:.2f}".format(num).rstrip("0").rstrip(".")
+            s = "0" if s == "-0" else s
             return "/" + s
 
         def _str_fmt(s):  # Use greek lunate epsilon symbol U+03F5
-            return (sublabel if sublabel != '' else '&#x03f5;' for sublabel in s)
+            return (sublabel if sublabel != "" else "&#x03f5;" for sublabel in s)
 
         #        g = graphviz.Digraph('FST', filename='fsm.gv')
 
-        sigma = "&Sigma;: {" + ','.join(sorted(a for a in self.alphabet)) + "}" \
-            if show_alphabet else ""
-        g = graphviz.Digraph('FST', graph_attr={"label": sigma, "rankdir": "LR"})
+        sigma = (
+            "&Sigma;: {" + ",".join(sorted(a for a in self.alphabet)) + "}"
+            if show_alphabet
+            else ""
+        )
+        g = graphviz.Digraph("FST", graph_attr={"label": sigma, "rankdir": "LR"})
         statenums = self.number_unnamed_states()
         if show_weights == False:
-            if any(t.weight != 0.0 for _, _, t in self.all_transitions(self.states)) or \
-                    any(s.finalweight != 0.0 for s in self.finalstates):
+            if any(
+                t.weight != 0.0 for _, _, t in self.all_transitions(self.states)
+            ) or any(s.finalweight != 0.0 for s in self.finalstates):
                 show_weights = True
 
-        g.attr(rankdir='LR', size='8,5')
-        g.attr('node', shape='doublecircle', style='filled')
+        g.attr(rankdir="LR", size="8,5")
+        g.attr("node", shape="doublecircle", style="filled")
         for s in self.finalstates:
             g.node(str(statenums[id(s)]) + _float_format(s.finalweight))
             if s == self.initialstate:
-                g.node(str(statenums[id(s)]) + _float_format(s.finalweight), style='filled, bold')
+                g.node(
+                    str(statenums[id(s)]) + _float_format(s.finalweight),
+                    style="filled, bold",
+                )
 
-        g.attr('node', shape='circle', style='filled')
+        g.attr("node", shape="circle", style="filled")
         for s in self.states:
             if s not in self.finalstates:
-                g.node(str(statenums[id(s)]), shape='circle', style='filled')
+                g.node(str(statenums[id(s)]), shape="circle", style="filled")
                 if s == self.initialstate:
-                    g.node(str(statenums[id(s)]), shape='circle', style='filled, bold')
+                    g.node(str(statenums[id(s)]), shape="circle", style="filled, bold")
             grouped_targets = defaultdict(set)  # {states}
             for label, t in s.all_transitions():
                 grouped_targets[t.targetstate] |= {(t.targetstate, label, t.weight)}
             for target, tlabelset in grouped_targets.items():
                 if raw == True:
-                    labellist = sorted((str(l) + '/' + str(w) for t, l, w in tlabelset))
+                    labellist = sorted((str(l) + "/" + str(w) for t, l, w in tlabelset))
                 else:
-                    labellist = sorted((':'.join(_str_fmt(label)) + _float_format(w) for _, label, w in tlabelset))
-                printlabel = ', '.join(labellist)
+                    labellist = sorted(
+                        (
+                            ":".join(_str_fmt(label)) + _float_format(w)
+                            for _, label, w in tlabelset
+                        )
+                    )
+                printlabel = ", ".join(labellist)
                 if s in self.finalstates:
                     sourcelabel = str(statenums[id(s)]) + _float_format(s.finalweight)
                 else:
                     sourcelabel = str(statenums[id(s)])
                 if target in self.finalstates:
-                    targetlabel = str(statenums[id(target)]) + _float_format(target.finalweight)
+                    targetlabel = str(statenums[id(target)]) + _float_format(
+                        target.finalweight
+                    )
                 else:
                     targetlabel = str(statenums[id(target)])
                 g.edge(sourcelabel, targetlabel, label=graphviz.nohtml(printlabel))
         return g
 
-    def render(self, view=True, filename: str='FST', format='pdf', tight=True):
+    def render(self, view=True, filename: str = "FST", format="pdf", tight=True):
         """
         Renders the FST to a file and optionally opens the file.
         :param view: If True, the rendered file will be opened.
@@ -472,10 +521,11 @@ class FST:
         :param tight: If False, the rendered file will have whitespace margins around the graph.
         """
         import graphviz
+
         digraph = cast(graphviz.Digraph, self.view())
         digraph.format = format
         if tight:
-            digraph.graph_attr['margin'] = '0' # Remove padding
+            digraph.graph_attr["margin"] = "0"  # Remove padding
         digraph.render(view=view, filename=filename, cleanup=True)
 
     def all_transitions(self, states):
@@ -487,7 +537,7 @@ class FST:
 
     def all_transitions_by_label(self, states):
         """Enumerate all transitions by label. Each yield produces a label, and those
-           the target states. 'states' is an iterable of source states."""
+        the target states. 'states' is an iterable of source states."""
         all_labels = {l for s in states for l in s.transitions.keys()}
         for l in all_labels:
             targets = set()
@@ -499,9 +549,9 @@ class FST:
 
     def copy_mod(self, modlabel=lambda l, w: l, modweight=lambda l, w: w):
         """Copies an FSM and possibly modifies labels and weights through functions.
-           Keyword arguments:
-           modlabel -- a function that modifies the label, takes label, weight as args.
-           modweights -- a function that modifies the weight, takes label, weight as args.
+        Keyword arguments:
+        modlabel -- a function that modifies the label, takes label, weight as args.
+        modweights -- a function that modifies the weight, takes label, weight as args.
         """
         newfst = FST(alphabet=self.alphabet.copy())
         q1q2 = {k: State(name=k.name) for k in self.states}
@@ -510,18 +560,20 @@ class FST:
         newfst.initialstate = q1q2[self.initialstate]
 
         for s, lbl, t in self.all_transitions(q1q2.keys()):
-            q1q2[s].add_transition(q1q2[t.targetstate], modlabel(lbl, t.weight), modweight(lbl, t.weight))
+            q1q2[s].add_transition(
+                q1q2[t.targetstate], modlabel(lbl, t.weight), modweight(lbl, t.weight)
+            )
 
         for s in self.finalstates:
             q1q2[s].finalweight = s.finalweight
 
         return newfst
 
-    def copy_filtered(self, labelfilter = lambda x: True):
+    def copy_filtered(self, labelfilter=lambda x: True):
         """Create a copy of self, possibly filtering out labels where them
-           optional function 'labelfilter' returns False."""
-        newfst = FST(alphabet = self.alphabet.copy())
-        q1q2 = {k:State() for k in self.states}
+        optional function 'labelfilter' returns False."""
+        newfst = FST(alphabet=self.alphabet.copy())
+        q1q2 = {k: State() for k in self.states}
         for s in self.states:
             q1q2[s].name = s.name
         newfst.states = set(q1q2.values())
@@ -537,55 +589,119 @@ class FST:
 
         return newfst, q1q2
 
-
-    def generate(self: 'FST', word, weights=False, tokenize_outputs=False, obey_flags=True, print_flags=False):
+    def generate(
+        self: "FST",
+        word,
+        weights=False,
+        tokenize_outputs=False,
+        obey_flags=True,
+        print_flags=False,
+    ):
         """Pass word through FST and return generator that yields all outputs."""
-        yield from self.apply(word, inverse=False, weights=weights, tokenize_outputs=tokenize_outputs, obey_flags=obey_flags, print_flags=print_flags)
+        yield from self.apply(
+            word,
+            inverse=False,
+            weights=weights,
+            tokenize_outputs=tokenize_outputs,
+            obey_flags=obey_flags,
+            print_flags=print_flags,
+        )
 
-    def analyze(self: 'FST', word, weights=False, tokenize_outputs=False, obey_flags=True, print_flags=False):
+    def analyze(
+        self: "FST",
+        word,
+        weights=False,
+        tokenize_outputs=False,
+        obey_flags=True,
+        print_flags=False,
+    ):
         """Pass word through FST and return generator that yields all inputs."""
-        yield from self.apply(word, inverse=True, weights=weights, tokenize_outputs=tokenize_outputs, obey_flags=obey_flags, print_flags=print_flags)
+        yield from self.apply(
+            word,
+            inverse=True,
+            weights=weights,
+            tokenize_outputs=tokenize_outputs,
+            obey_flags=obey_flags,
+            print_flags=print_flags,
+        )
 
-    def apply(self: 'FST', word, inverse=False, weights=False, tokenize_outputs=False, obey_flags=True, print_flags=False):
+    def apply(
+        self: "FST",
+        word,
+        inverse=False,
+        weights=False,
+        tokenize_outputs=False,
+        obey_flags=True,
+        print_flags=False,
+    ):
         """Pass word through FST and return generator that yields outputs.
-           if inverse == True, map from range to domain.
-           weights is by default False. To see the cost, set weights to True.
-           obey_flags toggles whether invalid flag diacritic
-           combinations are filtered out. By default, flags are
-           treated as epsilons in the input. print_flags toggels whether flag
-           diacritics are printed in the output. """
+        if inverse == True, map from range to domain.
+        weights is by default False. To see the cost, set weights to True.
+        obey_flags toggles whether invalid flag diacritic
+        combinations are filtered out. By default, flags are
+        treated as epsilons in the input. print_flags toggels whether flag
+        diacritics are printed in the output."""
         IN, OUT = [-1, 0] if inverse else [0, -1]  # Tuple positions for input, output
         cntr = itertools.count()
         w = self.tokenize_against_alphabet(word)
         Q, output = [], []
-        heapq.heappush(Q, (0.0, 0, next(cntr), [], self.initialstate))  # (cost, -pos, output, state)
+        heapq.heappush(
+            Q, (0.0, 0, next(cntr), [], self.initialstate)
+        )  # (cost, -pos, output, state)
         flag_filter = FlagStringFilter(self.alphabet) if obey_flags else None
 
         while Q:
             cost, negpos, _, output, state = heapq.heappop(Q)
 
-            if state == None and -negpos == len(w) and (not obey_flags or flag_filter(output)):
+            if (
+                state == None
+                and -negpos == len(w)
+                and (not obey_flags or flag_filter(output))
+            ):
                 if not print_flags:
                     output = FlagOp.filter_flags(output)
-                yield_output = ''.join(output) if not tokenize_outputs else output
+                yield_output = "".join(output) if not tokenize_outputs else output
                 if weights == False:
                     yield yield_output
                 else:
                     yield (yield_output, cost)
             elif state != None:
                 if state in self.finalstates:
-                    heapq.heappush(Q, (cost + state.finalweight, negpos, next(cntr), output, None))
+                    heapq.heappush(
+                        Q, (cost + state.finalweight, negpos, next(cntr), output, None)
+                    )
                 for lbl, t in state.all_transitions():
-                    if lbl[IN] == '' or FlagOp.is_flag(lbl[IN]):
-                        heapq.heappush(Q, (cost + t.weight, negpos, next(cntr), output + [lbl[OUT]], t.targetstate))
+                    if lbl[IN] == "" or FlagOp.is_flag(lbl[IN]):
+                        heapq.heappush(
+                            Q,
+                            (
+                                cost + t.weight,
+                                negpos,
+                                next(cntr),
+                                output + [lbl[OUT]],
+                                t.targetstate,
+                            ),
+                        )
                     elif -negpos < len(w):
-                        nextsym = w[-negpos] if w[-negpos] in self.alphabet else '.'
-                        appendedsym = w[-negpos] if (nextsym == '.' and lbl[OUT] == '.') else lbl[OUT]
+                        nextsym = w[-negpos] if w[-negpos] in self.alphabet else "."
+                        appendedsym = (
+                            w[-negpos]
+                            if (nextsym == "." and lbl[OUT] == ".")
+                            else lbl[OUT]
+                        )
                         if nextsym == lbl[IN]:
-                            heapq.heappush(Q, (
-                            cost + t.weight, negpos - 1, next(cntr), output + [appendedsym], t.targetstate))
+                            heapq.heappush(
+                                Q,
+                                (
+                                    cost + t.weight,
+                                    negpos - 1,
+                                    next(cntr),
+                                    output + [appendedsym],
+                                    t.targetstate,
+                                ),
+                            )
 
-    def words(self: 'FST'):
+    def words(self: "FST"):
         """A generator to yield all words. Yay BFS!"""
         Q = deque([(self.initialstate, 0.0, [])])
         while Q:
@@ -595,15 +711,15 @@ class FST:
             for label, t in s.all_transitions():
                 Q.append((t.targetstate, cost + t.weight, seq + [label]))
 
-    def tokenize_against_alphabet(self: 'FST', word) -> list:
+    def tokenize_against_alphabet(self: "FST", word) -> list:
         """Tokenize a string using the alphabet of the automaton."""
         tokens = []
         start = 0
         while start < len(word):
             t = word[start]  # Default is length 1 token unless we find a longer one
             for length in range(1, len(word) - start + 1):  # TODO: limit to max length
-                if word[start:start + length] in self.alphabet:  # of syms in alphabet
-                    t = word[start:start + length]
+                if word[start : start + length] in self.alphabet:  # of syms in alphabet
+                    t = word[start : start + length]
             tokens.append(t)
             start += len(t)
         return tokens
@@ -630,8 +746,9 @@ class FST:
             states.append(state)
             # Make sure to sort here too as the order of insertion will
             # vary as a consequence of different ordering of states
-            for label, arcs in sorted(state.transitions.items(),
-                                      key=operator.itemgetter(0)):
+            for label, arcs in sorted(
+                state.transitions.items(), key=operator.itemgetter(0)
+            ):
                 # FIXME: it is not possible to guarantee the ordering
                 # here.  Consider not using `set` for arcs.
                 for arc in sorted(arcs, key=operator.attrgetter("weight")):
@@ -641,7 +758,9 @@ class FST:
         finals = {}
         alphabet: Dict[str, int] = {}
         for src, state in enumerate(states):
-            for label, arcs in sorted(state.transitions.items(), key=operator.itemgetter(0)):
+            for label, arcs in sorted(
+                state.transitions.items(), key=operator.itemgetter(0)
+            ):
                 if len(label) == 1:
                     isym = osym = label[0]
                 else:
@@ -686,25 +805,28 @@ class FST:
                     # NOTE: There is no reason for these to be
                     # separate objects, but foma_apply_down.js wants
                     # them that way.
-                    {arc: osym} for arc in arcs
+                    {arc: osym}
+                    for arc in arcs
                 )
         # NOTE: in reality foma_apply_down.js only needs the *input*
         # symbols, so we could further optimize this.
         fstdict["s"] = fstdict["alphabet"]
         del fstdict["alphabet"]
-        fstdict["maxlen"] = max(len(k.encode('utf-16le'))
-                                for k in fstdict["s"]) // 2
+        fstdict["maxlen"] = max(len(k.encode("utf-16le")) for k in fstdict["s"]) // 2
         fstdict["f"] = fstdict["finals"]
         del fstdict["finals"]
         fstdict["t"] = transitions
         del fstdict["transitions"]
-        return " ".join(("var", jsnetname, "=",
-                         json.dumps(fstdict, ensure_ascii=False), ";"))
+        return " ".join(
+            ("var", jsnetname, "=", json.dumps(fstdict, ensure_ascii=False), ";")
+        )
+
     # endregion
 
 
 class Transition:
-    __slots__ = ['targetstate', 'label', 'weight']
+    __slots__ = ["targetstate", "label", "weight"]
+
     def __init__(self, targetstate, label, weight):
         self.targetstate = targetstate
         self.label = label
@@ -712,12 +834,22 @@ class Transition:
 
 
 class State:
-    def __init__(self, finalweight = None, name = None):
-        __slots__ = ['transitions', '_transitionsin', '_transitionsout', 'finalweight', 'name']
+    def __init__(self, finalweight=None, name=None):
+        __slots__ = [
+            "transitions",
+            "_transitionsin",
+            "_transitionsout",
+            "finalweight",
+            "name",
+        ]
         # Index both the first and last elements lazily (e.g. compose needs it)
-        self.transitions = dict()     # (l_1,...,l_n):{transition1, transition2, ...}
-        self._transitionsin = None    # l_1:(label, transition1), (label, transition2), ... }
-        self._transitionsout = None   # l_n:(label, transition1), (label, transition2, ...)}
+        self.transitions = dict()  # (l_1,...,l_n):{transition1, transition2, ...}
+        self._transitionsin = (
+            None  # l_1:(label, transition1), (label, transition2), ... }
+        )
+        self._transitionsout = (
+            None  # l_n:(label, transition1), (label, transition2, ...)}
+        )
         if finalweight is None:
             finalweight = float("inf")
         self.finalweight = finalweight
@@ -726,7 +858,7 @@ class State:
     @property
     def transitionsin(self) -> dict:
         """Returns a dictionary of the transitions from a state, indexed by the input
-           label, i.e. the first member of the label tuple."""
+        label, i.e. the first member of the label tuple."""
         if self._transitionsin is None:
             self._transitionsin = defaultdict(set)
             for label, newtrans in self.transitions.items():
@@ -737,7 +869,7 @@ class State:
     @property
     def transitionsout(self):
         """Returns a dictionary of the transitions from a state, indexed by the output
-           label, i.e. the last member of the label tuple."""
+        label, i.e. the last member of the label tuple."""
         if self._transitionsout is None:
             self._transitionsout = defaultdict(set)
             for label, newtrans in self.transitions.items():
@@ -749,7 +881,9 @@ class State:
         """Changes labels in a state's transitions from original to new."""
         for t in self.transitions[original]:
             t.label = new
-        self.transitions[new] = self.transitions.get(new, set()) | self.transitions[original]
+        self.transitions[new] = (
+            self.transitions.get(new, set()) | self.transitions[original]
+        )
         self.transitions.pop(original)
 
     def remove_transitions_to_targets(self, targets):
@@ -780,7 +914,7 @@ class State:
         """Returns a dict of states a state transitions to (cheapest) with epsilon."""
         targets = defaultdict(lambda: float("inf"))
         for lbl, tr in self.transitions.items():
-            if all(len(sublabel) == 0 for sublabel in lbl): # funky epsilon-check
+            if all(len(sublabel) == 0 for sublabel in lbl):  # funky epsilon-check
                 for s in tr:
                     targets[s.targetstate] = min(targets[s.targetstate], s.weight)
         return targets

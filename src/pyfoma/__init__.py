@@ -1,19 +1,36 @@
+from pyfoma.algorithms import (
+    _algorithms_to_add,
+    compose,
+    concatenate,
+    cross_product,
+    determinized_as_dfa,
+    determinized_unweighted,
+    difference,
+    ignore,
+    intersection,
+    inverted,
+    kleene_plus,
+    kleene_star,
+    minimized,
+    minimized_as_dfa,
+    optional,
+    projected,
+    reversed,
+    reversed_e,
+    union,
+)
 from pyfoma.fst import *
 from pyfoma.fst import re as regex
 from pyfoma.paradigm import Paradigm
-from pyfoma.algorithms import concatenate, union, intersection, kleene_star, kleene_plus, difference, cross_product, compose, optional, \
-                                ignore, projected, inverted, reversed, reversed_e, minimized, minimized_as_dfa, determinized_as_dfa, determinized_unweighted, \
-                                _algorithms_to_add
 
-
-__author__     = "Mans Hulden"
-__copyright__  = "Copyright 2022"
-__credits__    = ["Mans Hulden"]
-__license__    = "Apache"
-__version__    = "2.0"
+__author__ = "Mans Hulden"
+__copyright__ = "Copyright 2022"
+__credits__ = ["Mans Hulden"]
+__license__ = "Apache"
+__version__ = "2.0"
 __maintainer__ = "Mans Hulden"
-__email__      = "mans.hulden@gmail.com"
-__status__     = "Prototype"
+__email__ = "mans.hulden@gmail.com"
+__status__ = "Prototype"
 
 
 # This project is (partially) documented using the Sphinx docstring convention
@@ -22,34 +39,56 @@ __status__     = "Prototype"
 # Is this hacky? Yes, but it means we can keep our algorithm logic in the `algorithms` module,
 # while still being able to call useful methods like `determinize` on the actual FST instances
 # Note: These methods will be mutating, while the original versions are non-mutating
-from inspect import signature, Signature
+from inspect import Signature, signature
 
 for mutating_name, original_func in _algorithms_to_add.items():
     original_signature = signature(original_func)
 
     # Use the original func to make a mutating version
-    create_in_place_func = original_signature.return_annotation == 'FST'
+    create_in_place_func = original_signature.return_annotation == "FST"
 
     if create_in_place_func:
-        new_func = (lambda orig_func: lambda self, *args, **kwargs: self.become(orig_func(self, *args, **kwargs)))(original_func)
+        new_func = (
+            lambda orig_func: lambda self, *args, **kwargs: self.become(
+                orig_func(self, *args, **kwargs)
+            )
+        )(original_func)
     else:
-        new_func = (lambda orig_func: lambda self, *args, **kwargs: orig_func(self, *args, **kwargs))(original_func)
+        new_func = (
+            lambda orig_func: lambda self, *args, **kwargs: orig_func(
+                self, *args, **kwargs
+            )
+        )(original_func)
 
     new_func.__name__ = mutating_name
 
     # Replace 'fst' or 'fst1' with 'self'
-    self_param = original_signature.parameters.get('fst') or original_signature.parameters.get('fst1')
+    self_param = original_signature.parameters.get(
+        "fst"
+    ) or original_signature.parameters.get("fst1")
     if self_param:
-        other_params = [original_signature.parameters[param] for param in original_signature.parameters if param not in ['fst', 'fst1']]
-        original_signature = original_signature.replace(parameters=[self_param.replace(name='self')] + other_params)
+        other_params = [
+            original_signature.parameters[param]
+            for param in original_signature.parameters
+            if param not in ["fst", "fst1"]
+        ]
+        original_signature = original_signature.replace(
+            parameters=[self_param.replace(name="self")] + other_params
+        )
 
     # If the method now modifies the FST in place and doesn't have a return, remove the return from the signature
     if create_in_place_func:
-        if "Returns a modified FST" in original_func.__doc__:
-            new_func.__doc__ = original_func.__doc__.replace("Returns a modified FST", "Mutates the FST")
+        if original_func.__doc__ and "Returns a modified FST" in original_func.__doc__:
+            new_func.__doc__ = original_func.__doc__.replace(
+                "Returns a modified FST", "Mutates the FST"
+            )
         else:
-            new_func.__doc__ = "Mutates the caller FST.\n" + original_func.__doc__
-        new_func.__signature__ = original_signature.replace(return_annotation=Signature.empty)
+            new_func.__doc__ = "Mutates the caller FST.\n" + (
+                original_func.__doc__ or ""
+            )
+        new_func.__signature__ = original_signature.replace(
+            return_annotation=Signature.empty
+        )
     else:
         new_func.__doc__ = original_func.__doc__
         new_func.__signature__ = original_signature
@@ -58,5 +97,4 @@ for mutating_name, original_func in _algorithms_to_add.items():
 
     # Finally, add the new method to the FST class
     setattr(FST, mutating_name, new_func)
-
-
+    del new_func
