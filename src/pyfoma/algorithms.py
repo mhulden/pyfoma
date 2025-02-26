@@ -2,7 +2,7 @@
 
 """Defines common algorithms over FSTs"""
 from pyfoma.fst import FST, State, Transition
-import pyfoma.private.partition_refinement as partition_refinement
+import pyfoma._private.partition_refinement as partition_refinement
 from pyfoma.eliminate_flags import eliminate_fst_flags
 
 import heapq, operator, itertools, functools

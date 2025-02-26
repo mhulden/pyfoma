@@ -59,4 +59,4 @@ for mutating_name, original_func in _algorithms_to_add.items():
     # Finally, add the new method to the FST class
     setattr(FST, mutating_name, new_func)
 
-
+    del new_func
