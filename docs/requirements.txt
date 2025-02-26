@@ -1,0 +1,6 @@
+# Requirements for docs. Not necessary to use PyFoma.
+
+# Documentation
+sphinx
+python-docs-theme
+graphviz
