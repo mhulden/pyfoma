@@ -112,7 +112,7 @@ class FST:
            functions -- a set of Python functions that the compiler can access when a function
                        is referenced in the regex, e.g. $^myfunc(...)
         """
-        import pyfoma.private.regexparse as regexparse
+        import pyfoma._private.regexparse as regexparse
         if multichar_symbols is not None:
             escaper = _multichar_matcher(multichar_symbols)
             regularexpression = escaper.sub(_multichar_replacer, regularexpression)

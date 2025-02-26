@@ -45,3 +45,4 @@ Demo
 *.afdesign
 .venv
 .vscode
+.zed
