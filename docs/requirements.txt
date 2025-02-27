@@ -2,5 +2,5 @@
 
 # Documentation
 sphinx
-python-docs-theme
 graphviz
+sphinx-rtd-theme
