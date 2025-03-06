@@ -746,6 +746,8 @@ def complement(fst: 'FST') -> 'FST':
 def product(fst1: 'FST', fst2: 'FST', finalf = any, oplus = min, pathfollow = lambda x,y: x|y) -> 'FST':
     """Generates the product FST from fst1, fst2. The helper functions by default
        produce fst1|fst2."""
+    fst1.number_unnamed_states()
+    fst2.number_unnamed_states()
     newfst = FST()
     Q = deque([(fst1.initialstate, fst2.initialstate)])
     S = {(fst1.initialstate, fst2.initialstate): newfst.initialstate}
