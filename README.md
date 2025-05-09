@@ -14,7 +14,7 @@ myfst = FST.re("(cl|n|s)?e(ve|a)r")
 myfst.view()
 ```
 
-<img src="./docs/images/quickstart1.png" width="722">
+<img src="./docs/examples/images/quickstart1.png" width="722">
 
 Next, check out the documentation!
 
