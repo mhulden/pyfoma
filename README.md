@@ -16,7 +16,7 @@ myfst.view()
 
 <img src="./docs/examples/images/quickstart1.png" width="722">
 
-Next, check out the documentation!
+Next, check out the [documentation](https://mhulden.github.io/pyfoma/)!
 
 ## Contributing
 
