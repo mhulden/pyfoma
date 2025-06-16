@@ -304,3 +304,22 @@ class RegexParse:
         while stack:
             output.append(stack.pop())
         return output
+
+
+def _multichar_matcher(multichar_symbols: Iterable[str]) -> pyre.Pattern:
+    """Create matcher for unquoted multichar symbols in lexicons and
+    regular expressions."""
+    ordered = [sym for sym in multichar_symbols if len(sym) > 1]
+    ordered.sort(key=len, reverse=True)
+    return pyre.compile(
+        r"('(?:\\'|[^'])*')|("
+        + "|".join(pyre.escape(sym) for sym in ordered)
+        + r")")
+
+
+def _multichar_replacer(matchobj: pyre.Match):
+    """Replace character or quoted string with quoted thing."""
+    quoted, sym = matchobj.groups()
+    if quoted is not None:
+        return quoted
+    return "'" + sym.replace("'", r"\'") + "'"
