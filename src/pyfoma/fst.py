@@ -1276,3 +1276,34 @@ class FST:
             q1q2[s].finalweight = s.finalweight
 
         return newfst, q1q2
+
+
+# ==================
+# Global Functions
+# ==================
+def reverse(fst: 'FST'):
+    return fst.reverse()
+
+def invert(fst: 'FST'):
+    return fst.invert()
+
+def minimize(fst: 'FST'):
+    return fst.minimize()
+
+def determinize(fst: 'FST'):
+    return fst.determinize()
+
+def ignore(fst1: 'FST', fst2: 'FST'):
+    return fst1.ignore(fst2)
+
+def rewrite(fst: 'FST', *contexts, **flags):
+    return fst.rewrite(*contexts, **flags)
+
+def context_restrict(fst: 'FST', *contexts, rewrite = False):
+    return fst.context_restrict(*contexts, rewrite = rewrite)
+
+def project(fst: 'FST', dim = 0):
+    return fst.project(dim = dim)
+
+def concatenate(fst1: 'FST', fst2: 'FST'):
+    return fst1.concatenate(fst2)

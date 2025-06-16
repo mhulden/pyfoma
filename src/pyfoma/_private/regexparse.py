@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 
-import re as pyre, functools
+import functools
+import re as pyre
+from typing import Iterable
 
-from pyfoma.fst import FST
-import pyfoma.algorithms as alg
+from pyfoma import fst
 
 
 class RegexParse:
@@ -12,20 +13,20 @@ class RegexParse:
                 '~': "COMPLEMENT", '@': "COMPOSE", ',': 'COMMA', '/': 'CONTEXT', '_': 'PAIRUP'}
 
     # Used to set names so that these functions have useful error messages
-    _builtins_project_lambda = lambda *args, **kwargs: alg.projected(*args, dim=int(kwargs.get('dim', '-1')))
+    _builtins_project_lambda = lambda *args, **kwargs: fst.project(*args, dim=int(kwargs.get('dim', '-1')))
     _builtins_project_lambda.__name__ = "project"
-    _builtins_input_lambda = lambda x: alg.projected(x, dim=0)
+    _builtins_input_lambda = lambda x: fst.project(x, dim=0)
     _builtins_input_lambda.__name__ = "input"
-    _builtins_output_lambda = lambda x: alg.projected(x, dim=-1)
+    _builtins_output_lambda = lambda x: fst.project(x, dim=-1)
     _builtins_output_lambda.__name__ = "output"
 
-    builtins = {'reverse': alg.reversed,
-                'invert': alg.inverted,
-                'minimize': alg.minimized,
-                'determinize': alg.determinized,
-                'ignore': alg.ignore,
-                'rewrite': alg.rewritten,
-                'restrict': alg.context_restricted,
+    builtins = {'reverse': fst.reverse,
+                'invert': fst.invert,
+                'minimize': fst.minimize,
+                'determinize': fst.determinize,
+                'ignore': fst.ignore,
+                'rewrite': fst.rewrite,
+                'restrict': fst.context_restrict,
                 'project': _builtins_project_lambda,
                 'input': _builtins_input_lambda,
                 'output': _builtins_output_lambda}
@@ -83,7 +84,7 @@ class RegexParse:
             raise SyntaxError("End must be larger than start in character class range.")
         return ranges, negated
 
-    def compile(self) -> 'FST':
+    def compile(self) -> 'fst.FST':
         """Put it all together!
         'If you lie to the compiler, it will have its revenge.' — Henry Spencer."""
 
@@ -160,18 +161,18 @@ class RegexParse:
                 rng = value.split(',')
                 lang = _pop(stack)
                 if len(rng) == 1:  # e.g. {3}
-                    _append(stack, functools.reduce(lambda x, y: alg.concatenate(x, y), [lang] * int(value)))
+                    _append(stack, functools.reduce(lambda x, y: fst.concatenate(x, y), [lang] * int(value)))
                 elif rng[0] == '':  # e.g. {,3}
                     lang = lang.optional()
-                    _append(stack, functools.reduce(lambda x, y: alg.concatenate(x, y), [lang] * int(rng[1])))
+                    _append(stack, functools.reduce(lambda x, y: fst.concatenate(x, y), [lang] * int(rng[1])))
                 elif rng[1] == '':  # e.g. {3,}
-                    _append(stack, functools.reduce(lambda x, y: alg.concatenate(x, y), [lang] * int(rng[0])).concatenate(
+                    _append(stack, functools.reduce(lambda x, y: fst.concatenate(x, y), [lang] * int(rng[0])).concatenate(
                         lang.kleene_closure()))
                 else:  # e.g. {1,4}
                     if int(rng[0] > rng[1]):
                         self._error_report(SyntaxError, "n must be greater than m in {m,n}", line_num, column)
-                    lang1 = functools.reduce(lambda x, y: alg.concatenate(x, y), [lang] * int(rng[0]))
-                    lang2 = functools.reduce(lambda x, y: alg.concatenate(x, y),
+                    lang1 = functools.reduce(lambda x, y: fst.concatenate(x, y), [lang] * int(rng[0]))
+                    lang2 = functools.reduce(lambda x, y: fst.concatenate(x, y),
                                              [lang.optional()] * (int(rng[1]) - int(rng[0])))
                     _append(stack, lang1.concatenate(lang2))
             elif op == 'CP':
@@ -183,9 +184,9 @@ class RegexParse:
             elif op == 'WEIGHT':
                 _peek(stack).add_weight(float(value)).push_weights()
             elif op == 'SYMBOL':
-                _append(stack, FST(label=(value,)))
+                _append(stack, fst.FST(label=(value,)))
             elif op == 'ANY':
-                _append(stack, FST(label=('.',)))
+                _append(stack, fst.FST(label=('.',)))
             elif op == 'VARIABLE':
                 if value not in self.defined:
                     self._error_report(SyntaxError, "Defined FST \"" + value + \
@@ -193,7 +194,7 @@ class RegexParse:
                 _append(stack, self.defined[value].copy_mod())
             elif op == 'CHAR_CLASS':
                 charranges, negated = self.character_class_parse(value)
-                _append(stack, FST.character_ranges(charranges, complement=negated))
+                _append(stack, fst.FST.character_ranges(charranges, complement=negated))
             elif op == 'COMPLEMENT':
                 _append(stack, _pop(stack).complement())
         if len(stack) != 1:  # If there's still stuff on the stack, that's a syntax error
