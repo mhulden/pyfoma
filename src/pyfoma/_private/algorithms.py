@@ -4,8 +4,10 @@
 import heapq
 import itertools
 from collections import deque
+from typing import TYPE_CHECKING
 
-from pyfoma.fst import FST
+if TYPE_CHECKING:
+    from ..fst import FST
 
 
 def scc(fst: 'FST') -> set:

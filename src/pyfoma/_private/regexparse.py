@@ -119,6 +119,7 @@ class RegexParse:
 
         stack, parameterstack = [], []
         for op, value, line_num, column in self.parsed:
+            # breakpoint()
             if op == 'FUNC':
                 if value in self.functions:  # Look in user-defined functions first ...
                     _append(stack, self.functions[value](*_getargs(stack), **dict(parameterstack)))

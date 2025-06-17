@@ -8,7 +8,7 @@ import functools
 
 from pyfoma.flag import FlagStringFilter, FlagOp
 from pyfoma._private.states import State, all_transitions
-from pyfoma._private import util, algorithms, states, partition_refinement, eliminate_flags, transition
+from pyfoma._private import util, algorithms, states, partition_refinement, transition
 
 
 def harmonize_alphabet(func):
@@ -847,7 +847,8 @@ class FST:
 
     def eliminate_flags(self) -> 'FST':
         """Equivalent behavior but no flag diacritics."""
-        return eliminate_flags.eliminate_fst_flags(self)
+        from ._private.eliminate_flags import eliminate_fst_flags
+        return eliminate_fst_flags(self)
 
     def add_weight(self, weight) -> 'FST':
         """Add weight to the set of final states in the FST."""
@@ -894,6 +895,7 @@ class FST:
             for f in self.finalstates:
                 q1q2[f].finalweight = f.finalweight + ocopy.initialstate.finalweight
         new_fst.states = set(q1q2.values())
+        breakpoint()
         return new_fst
 
     @harmonize_alphabet
