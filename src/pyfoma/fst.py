@@ -1232,12 +1232,14 @@ class FST:
         ordered = [self.initialstate] + list(self.states - {self.initialstate})
         return {id(s):(next(cntr) if s.name == None or force == True else s.name) for s in ordered}
 
-    def cleanup_sigma(self):
-        """Remove symbols if they are no longer needed, including . ."""
-        seen = {sym for _, lbl, _ in all_transitions(self.states) for sym in lbl}
+    def cleanup_sigma(self) -> 'FST':
+        """Remove symbols if they are no longer needed, including . .
+        Returns a new FST with the cleaned alphabet."""
+        new_fst = self.__copy__()
+        seen = {sym for _, lbl, _ in all_transitions(new_fst.states) for sym in lbl}
         if '.' not in seen:
-            self.alphabet &= seen
-        return self
+            new_fst.alphabet &= seen
+        return new_fst
 
     def copy_mod(self, modlabel=lambda l, w: l, modweight=lambda l, w: w):
         """Copies an FSM and possibly modifies labels and weights through functions.
