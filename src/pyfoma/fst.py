@@ -595,24 +595,25 @@ class FST:
 
     def filter_accessible(self) -> 'FST':
         """Remove states that are not on a path from the initial state."""
-        explored = { self.initialstate }
-        stack = deque([self.initialstate])
+        new_fst = self.__copy__()
+        explored = { new_fst.initialstate }
+        stack = deque([new_fst.initialstate])
         while stack:
             source = stack.pop()
             for label, transition in source.all_transitions():
                 if transition.targetstate not in explored:
                     explored.add(transition.targetstate)
                     stack.append(transition.targetstate)
-        new_fst = self.__copy__()
         new_fst.states = explored
-        new_fst.finalstates &= self.states
+        new_fst.finalstates &= new_fst.states
         return new_fst
 
     def filter_coaccessible(self) -> 'FST':
         """Remove states and transitions to states that have no path to a final state."""
-        explored = {self.initialstate}
-        stack = deque([self.initialstate])
-        inverse = {s: set() for s in self.states}  # store all preceding arcs here
+        new_fst = self.__copy__()
+        explored = {new_fst.initialstate}
+        stack = deque([new_fst.initialstate])
+        inverse = {s: set() for s in new_fst.states}  # store all preceding arcs here
         while stack:
             source = stack.pop()
             for target in source.all_targets():
@@ -621,8 +622,8 @@ class FST:
                     explored.add(target)
                     stack.append(target)
 
-        stack = deque([s for s in self.finalstates])
-        coaccessible = {s for s in self.finalstates}
+        stack = deque([s for s in new_fst.finalstates])
+        coaccessible = {s for s in new_fst.finalstates}
         while stack:
             source = stack.pop()
             for previous in inverse[source]:
@@ -630,8 +631,7 @@ class FST:
                     coaccessible.add(previous)
                     stack.append(previous)
 
-        coaccessible.add(self.initialstate)  # Let's make an exception for the initial
-        new_fst = self.__copy__()
+        coaccessible.add(new_fst.initialstate)  # Let's make an exception for the initial
         for s in new_fst.states:  # Need to also remove transitions to non-coaccessibles
             s.remove_transitions_to_targets(new_fst.states - coaccessible)
 
@@ -789,7 +789,7 @@ class FST:
                 Agenda |= {new for new, _ in splits} # Only place A & S on Agenda
         equivalenceclasses = P.astuples()
         if len(equivalenceclasses) == len(self.states):
-            return self # we were already minimal, no need to reconstruct
+            return self.__copy__() # we were already minimal, no need to reconstruct
 
         return self.merge_equivalent_states(equivalenceclasses)
 
@@ -876,26 +876,26 @@ class FST:
     @harmonize_alphabet
     def concatenate(self, fst2: 'FST') -> 'FST':
         """Concatenation of T1T2. No epsilons. May produce non-accessible states."""
+        fst1 = self.__copy__()
         ocopy, _ = fst2.copy_filtered() # Need to copy since self may equal other
-        q1q2 = {k:State() for k in self.states | ocopy.states}
+        q1q2 = {k:State() for k in fst1.states | ocopy.states}
 
         for s, lbl, t in all_transitions(q1q2.keys()):
             q1q2[s].add_transition(q1q2[t.targetstate], lbl, t.weight)
-        for s in self.finalstates:
+        for s in fst1.finalstates:
             for lbl2, t2 in ocopy.initialstate.all_transitions():
                 q1q2[s].add_transition(q1q2[t2.targetstate], lbl2, t2.weight + s.finalweight)
 
         new_fst = FST()
-        new_fst.initialstate = q1q2[self.initialstate]
+        new_fst.initialstate = q1q2[fst1.initialstate]
         new_fst.finalstates = {q1q2[f] for f in ocopy.finalstates}
         for s in ocopy.finalstates:
             q1q2[s].finalweight = s.finalweight
         if ocopy.initialstate in ocopy.finalstates:
-            new_fst.finalstates |= {q1q2[f] for f in self.finalstates}
-            for f in self.finalstates:
+            new_fst.finalstates |= {q1q2[f] for f in fst1.finalstates}
+            for f in fst1.finalstates:
                 q1q2[f].finalweight = f.finalweight + ocopy.initialstate.finalweight
         new_fst.states = set(q1q2.values())
-        breakpoint()
         return new_fst
 
     @harmonize_alphabet
