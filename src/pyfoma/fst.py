@@ -1,6 +1,6 @@
 import heapq, json, itertools, operator, re as pyre
 from collections import deque, defaultdict
-from typing import Dict, Any, List, TextIO, cast, Optional, Tuple
+from typing import Dict, Any, List, TextIO, cast, Optional, Tuple, Sequence
 from os import PathLike
 from pathlib import Path
 import pickle
@@ -24,7 +24,7 @@ def harmonize_alphabet(func):
                 if A == other:
                     A, _ = other.copy_filtered()
                     other = A # Need to copy to avoid mutating other
-                for s, l, t in list(A.all_transitions(A.states)):
+                for s, l, t in list(all_transitions(A.states)):
                     if '.' in l:
                         for sym in Aexpand:
                             newl = tuple(lbl if lbl != '.' else sym for lbl in l)
@@ -516,7 +516,8 @@ class FST:
         IN, OUT = [-1, 0] if inverse else [0, -1]  # Tuple positions for input, output
         cntr = itertools.count()
         w = self.tokenize_against_alphabet(word)
-        Q, output = [], []
+        Q: List[Tuple[float, int, int, List[str], Optional[State]]] = []
+        # output = []
         heapq.heappush(Q, (0.0, 0, next(cntr), [], self.initialstate))  # (cost, -pos, output, state)
         flag_filter = FlagStringFilter(self.alphabet) if obey_flags else None
 

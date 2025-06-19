@@ -4,22 +4,27 @@ import unittest
 from collections import deque
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from pyfoma import algorithms
 from pyfoma.fst import FST
+
 
 class TestFST(unittest.TestCase):
     """Test basic FST functionality"""
+
     def test_rewrite(self):
         f1 = FST.re("$^rewrite((ab):x / a b _ a)")
         self.assertEqual(set(f1.generate("abababa")), {"abxxa"})
 
-        bigrule = FST.re('@'.join("$^rewrite([mnŋ]:%s / _ %s)" % (nas, stop)\
-                                          for nas, stop in zip('mnŋ','ptk')))
-        self.assertEqual(list(bigrule.apply('anpinkamto'))[0], "ampiŋkanto")
+        bigrule = FST.re(
+            "@".join(
+                "$^rewrite([mnŋ]:%s / _ %s)" % (nas, stop)
+                for nas, stop in zip("mnŋ", "ptk")
+            )
+        )
+        self.assertEqual(list(bigrule.apply("anpinkamto"))[0], "ampiŋkanto")
 
     def test_rewrite_weights(self):
         f1 = FST.re("$^rewrite(a:?(b<1.0>))")
-        res = list(f1.analyze('bbb', weights = True))
+        res = list(f1.analyze("bbb", weights=True))
         self.assertEqual(len(res), 8)
         self.assertEqual(sum(e[1] for e in res), 12.0)
 
@@ -53,7 +58,7 @@ class TestFST(unittest.TestCase):
         f1 = FST.re("'':x")
         self.assertEqual(set(f1.generate("")), {"x"})
         f2 = FST.re("'':?x")
-        self.assertEqual(set(f2.generate("")), {"x",""})
+        self.assertEqual(set(f2.generate("")), {"x", ""})
 
     def test_union(self):
         f1 = FST.re("a|''")
@@ -99,46 +104,36 @@ class TestFST(unittest.TestCase):
         self.assertEqual(0, len(list(f1.generate("dog"))))
         self.assertEqual(1, len(list(f1.generate("octopus"))))
         # Non-mutating
-        f2 = algorithms.complement(f1)
+        f2 = f1.complement()
         self.assertEqual(1, len(list(f2.generate("dog"))))
         self.assertEqual(0, len(list(f2.generate("octopus"))))
-        # Mutating
-        f1.complement()
-        self.assertEqual(1, len(list(f1.generate("dog"))))
-        self.assertEqual(0, len(list(f1.generate("octopus"))))
-        f1.complement()
-        self.assertEqual(0, len(list(f1.generate("dog"))))
-        self.assertEqual(1, len(list(f1.generate("octopus"))))
 
     def test_methods(self):
         """Verify that generated methods work as expected"""
         f1 = FST.regex("(cat):(dog)")
         f2 = FST.regex("(dog):(octopus)")
-        f3 = algorithms.compose(f1, f2)
-        f4 = algorithms.inverted(f1)
+        f3 = f1.compose(f2)
+        f4 = f1.invert()
         self.assertEqual("dog", next(f1.generate("cat")))
         self.assertEqual("octopus", next(f2.generate("dog")))
         self.assertEqual("octopus", next(f3.generate("cat")))
         self.assertEqual("cat", next(f4.generate("dog")))
-        # This is mutating (maybe not what you expect?)
-        f1.compose(f2)
-        self.assertEqual("octopus", next(f1.generate("cat")))
-        # So is this!
-        f1.invert()
-        self.assertEqual("cat", next(f1.generate("octopus")))
 
 
 class TestSymbols(unittest.TestCase):
     """Test multi-character symbol feature"""
+
     MULTICHAR_SYMBOLS = "u: ch ll x̌ʷ".split()
 
     def test_rlg(self):
         """Verify multi-character symbols in lexicons (lexc style)"""
         # Hopefully the third one is not an actual word for anyone
         words = ["hecho", "llama", "xu:x̌ʷ"]
-        lex = FST.rlg({
-            "Root": [(word, "#") for word in words]
-        }, "Root", multichar_symbols=self.MULTICHAR_SYMBOLS)
+        lex = FST.rlg(
+            {"Root": [(word, "#") for word in words]},
+            "Root",
+            multichar_symbols=self.MULTICHAR_SYMBOLS,
+        )
         for sym in self.MULTICHAR_SYMBOLS:
             self.assertTrue(sym in lex.alphabet)
         for word in words:
@@ -171,13 +166,13 @@ class TestSymbols(unittest.TestCase):
         rule = FST.regex(r"$^rewrite('n\'t':(' 'not) / is _)")
         self.assertEqual("is not", next(rule.generate("isn't")))
         # Escaped quotes in multichar_symbols
-        rule = FST.regex(r"$^rewrite(n't:(' 'not) / is _)",
-                         multichar_symbols=["n't"])
+        rule = FST.regex(r"$^rewrite(n't:(' 'not) / is _)", multichar_symbols=["n't"])
         self.assertEqual("is not", next(rule.generate("isn't")))
         # Escaped quotes in explicit multichar symbol not destroyed by
         # multichar_symbols escaping
-        rule = FST.regex(r"$^rewrite('n\'t':(' 'not) / is _)",
-                         multichar_symbols=["n't"])
+        rule = FST.regex(
+            r"$^rewrite('n\'t':(' 'not) / is _)", multichar_symbols=["n't"]
+        )
         self.assertEqual("is not", next(rule.generate("isn't")))
 
     def test_single_quotes(self):
@@ -201,20 +196,23 @@ class TestSymbols(unittest.TestCase):
         """Verify multi-character symbols in rewrite rules"""
         # Yes, you can put forbidden characters in symbols now (just
         # because you can doesn't necessarily mean you should)
-        rule = FST.regex("$^rewrite(x̌ʷ:x / u: _ #)",
-                         multichar_symbols=self.MULTICHAR_SYMBOLS)
+        rule = FST.regex(
+            "$^rewrite(x̌ʷ:x / u: _ #)", multichar_symbols=self.MULTICHAR_SYMBOLS
+        )
         self.assertEqual("xu:x", next(rule.generate("xu:x̌ʷ")))
         self.assertEqual("xux̌ʷ", next(rule.generate("xux̌ʷ")))
 
     def test_longest_match(self):
         """Verify that longest multichar symbols are matched"""
-        rule = FST.regex("$^rewrite(ABC:D)",
-                         multichar_symbols=["A", "B", "C", "AB", "ABC"])
+        rule = FST.regex(
+            "$^rewrite(ABC:D)", multichar_symbols=["A", "B", "C", "AB", "ABC"]
+        )
         self.assertEqual("ABD", next(rule.generate("ABABC")))
 
 
 class TestUtil(unittest.TestCase):
     """Test utility functions."""
+
     fst = FST.regex(r"'[NO\'UN]' '[VERB]'<1> (cat):(dog)? 'ROTFLMAO🤣'")
 
     def verify_att_format(self, att, epsilon="@0@"):
@@ -257,8 +255,9 @@ class TestUtil(unittest.TestCase):
                 #      --keep_osymbols --keep_state_numbering \
                 #      test.att  | fstprint
             # Check state symbols get output too
-            f = FST.rlg({"Root": [("", "Sublex")],
-                         "Sublex": [(("foo", "bar"), "#")]}, "Root")
+            f = FST.rlg(
+                {"Root": [("", "Sublex")], "Sublex": [(("foo", "bar"), "#")]}, "Root"
+            )
             f.save_att(path / "test_st.fst", state_symbols=True)
             self.assertTrue((path / "test_st.fst").exists())
             self.assertTrue((path / "test_st.isyms").exists())
@@ -277,13 +276,13 @@ class TestUtil(unittest.TestCase):
 
     def test_todict(self):
         """Ensure that json is the same for equivalent FSTs"""
-        rx = (r"""
+        rx = r"""
         $^rewrite(s:(s | 'š')
             | c:(c | 'č')
             | \?:Ɂ
             | 7:Ɂ
             | ʔ:Ɂ)
-        """)
+        """
         fst1 = FST.regex(rx)
         fst2 = FST.regex(rx)
         assert json.dumps(fst1.todict()) == json.dumps(fst2.todict())
@@ -306,8 +305,9 @@ class TestUtil(unittest.TestCase):
                 syms = re.split(r"(?<!\\)\|", label)
                 self.assertIn(f"{src}|{syms[0]}", js_json["t"])
                 for arc in arcs:
-                    self.assertIn({str(arc): syms[-1]},
-                                  js_json["t"][f"{src}|{syms[0]}"])
+                    self.assertIn(
+                        {str(arc): syms[-1]}, js_json["t"][f"{src}|{syms[0]}"]
+                    )
         # Compare with output of foma2js.perl, sort of (it has various
         # issues, which have been fixed then dumped to JSON)
         with open("test_foma.json", "rt") as infh:
@@ -330,7 +330,8 @@ class TestUtil(unittest.TestCase):
                             for jdst, jsym in jarc.items():
                                 if jsym != syms[-1]:
                                     continue
-                                Q.append((arc, jdst)) 
+                                Q.append((arc, jdst))
+
 
 if __name__ == "__main__":
     unittest.main()
