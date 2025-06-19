@@ -157,7 +157,7 @@ class RegexParse:
                 arg2, arg1 = _pop(stack), _pop(stack)
                 _append(stack, arg1.compose(arg2).filter_coaccessible())
             elif op == 'OPTIONAL':
-                _peek(stack).optional()
+                _append(stack, _pop(stack).optional())
             elif op == 'RANGE':
                 rng = value.split(',')
                 lang = _pop(stack)
@@ -183,7 +183,7 @@ class RegexParse:
                 arg2, arg1 = _pop(stack), _pop(stack)
                 _append(stack, arg1.cross_product(arg2, optional=True).filter_coaccessible())
             elif op == 'WEIGHT':
-                _peek(stack).add_weight(float(value)).push_weights()
+                _append(stack, _pop(stack).add_weight(float(value)).push_weights())
             elif op == 'SYMBOL':
                 _append(stack, fst.FST(label=(value,)))
             elif op == 'ANY':

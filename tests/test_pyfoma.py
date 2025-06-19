@@ -1,4 +1,5 @@
 import json
+import pathlib
 import re
 import unittest
 from collections import deque
@@ -310,7 +311,7 @@ class TestUtil(unittest.TestCase):
                     )
         # Compare with output of foma2js.perl, sort of (it has various
         # issues, which have been fixed then dumped to JSON)
-        with open("test_foma.json", "rt") as infh:
+        with open(pathlib.Path(__file__).parent / "test_foma.json", "rt") as infh:
             foma_json = json.load(infh)
             self.assertEqual(js_json["s"].keys(), foma_json["s"].keys())
             # We are not bug-compatible (foma2js.perl has 9, but
