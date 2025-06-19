@@ -1226,6 +1226,12 @@ class FST:
     # Utilities
     # ==================
 
+    def become(self, other: 'FST'):
+        """Hacky or what? We use this to mutate self for those algorithms that don't directly do it."""
+        self.alphabet, self.initialstate, self.states, self.finalstates = \
+        other.alphabet, other.initialstate, other.states, other.finalstates
+        return self
+
     def number_unnamed_states(self, force = False) -> dict:
         """Sequentially number those states that don't have the 'name' attribute.
            If 'force == True', number all states."""
