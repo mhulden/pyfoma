@@ -8,7 +8,7 @@ fixed_readme = long_description.replace("./docs/images/", github_permalink)
 
 setuptools.setup(
 	name = "pyfoma",
-	version = "v1.0.7",
+	version = "v2.0.0",
 	author = "Mans Hulden",
 	author_email = "mans.hulden@colorado.edu",
 	description = "Python Finite-State Toolkit",
@@ -25,7 +25,7 @@ setuptools.setup(
 	],
 	package_dir = {"": "src"},
 	packages = setuptools.find_packages(where="src"),
-	python_requires = ">=3.6",
+	python_requires = ">=3.7",
 	install_requires = [
 		"IPython", "graphviz"
 	]
