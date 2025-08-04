@@ -1,6 +1,6 @@
 import heapq, json, itertools, operator, re as pyre
 from collections import deque, defaultdict
-from typing import Dict, Any, List, TextIO, cast, Optional, Tuple, Sequence
+from typing import Dict, Any, List, TextIO, Union, cast, Optional, Tuple, Sequence
 from os import PathLike
 from pathlib import Path
 import pickle
@@ -505,7 +505,7 @@ class FST:
         """Pass word through FST and return generator that yields all inputs."""
         yield from self.apply(word, inverse=True, weights=weights, tokenize_outputs=tokenize_outputs, obey_flags=obey_flags, print_flags=print_flags)
 
-    def apply(self: 'FST', word, inverse=False, weights=False, tokenize_outputs=False, obey_flags=True, print_flags=False):
+    def apply(self: 'FST', word: Union[str, List[str]], inverse=False, weights=False, tokenize_outputs=False, obey_flags=True, print_flags=False):
         """Pass word through FST and return generator that yields outputs.
            if inverse == True, map from range to domain.
            weights is by default False. To see the cost, set weights to True.
@@ -515,7 +515,10 @@ class FST:
            diacritics are printed in the output. """
         IN, OUT = [-1, 0] if inverse else [0, -1]  # Tuple positions for input, output
         cntr = itertools.count()
-        w = self.tokenize_against_alphabet(word)
+        if isinstance(word, str):
+            word_tokenized = self.tokenize_against_alphabet(word)
+        else:
+            word_tokenized = word
         Q: List[Tuple[float, int, int, List[str], Optional[State]]] = []
         # output = []
         heapq.heappush(Q, (0.0, 0, next(cntr), [], self.initialstate))  # (cost, -pos, output, state)
@@ -524,7 +527,7 @@ class FST:
         while Q:
             cost, negpos, _, output, state = heapq.heappop(Q)
 
-            if state == None and -negpos == len(w) and (not obey_flags or flag_filter(output)):
+            if state == None and -negpos == len(word_tokenized) and (not obey_flags or flag_filter(output)):
                 if not print_flags:
                     output = FlagOp.filter_flags(output)
                 yield_output = ''.join(output) if not tokenize_outputs else output
@@ -538,9 +541,9 @@ class FST:
                 for lbl, t in state.all_transitions():
                     if lbl[IN] == '' or FlagOp.is_flag(lbl[IN]):
                         heapq.heappush(Q, (cost + t.weight, negpos, next(cntr), output + [lbl[OUT]], t.targetstate))
-                    elif -negpos < len(w):
-                        nextsym = w[-negpos] if w[-negpos] in self.alphabet else '.'
-                        appendedsym = w[-negpos] if (nextsym == '.' and lbl[OUT] == '.') else lbl[OUT]
+                    elif -negpos < len(word_tokenized):
+                        nextsym = word_tokenized[-negpos] if word_tokenized[-negpos] in self.alphabet else '.'
+                        appendedsym = word_tokenized[-negpos] if (nextsym == '.' and lbl[OUT] == '.') else lbl[OUT]
                         if nextsym == lbl[IN]:
                             heapq.heappush(Q, (
                             cost + t.weight, negpos - 1, next(cntr), output + [appendedsym], t.targetstate))
