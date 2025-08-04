@@ -407,6 +407,44 @@ class FST:
         return " ".join(("var", jsnetname, "=",
                          json.dumps(fstdict, ensure_ascii=False), ";"))
 
+    @classmethod
+    def fromdict(cls, fstdict: Dict) -> "FST":
+        """Recreate an FST from dictionary form."""
+        fst = FST(alphabet=set(fstdict["alphabet"].keys()))
+        states: List[State] = []
+
+        def add_up_to(state_idx: int):
+            while len(states) <= state_idx:
+                state = State()
+                idx = len(states)
+                states.append(state)
+                fst.states.add(state)
+                if idx == 0:
+                    fst.initialstate = state
+                if idx in fstdict["finals"]:
+                    fst.finalstates.add(state)
+                    state.finalweight = fstdict["finals"][idx]
+                elif str(idx) in fstdict["finals"]:
+                    fst.finalstates.add(state)
+                    state.finalweight = fstdict["finals"][str(idx)]
+            return states[state_idx]
+
+        for src, arcs in fstdict["transitions"].items():
+            src_state = add_up_to(int(src))
+            for tlabel, targets in arcs.items():
+                labels = tuple(sym.replace(r"\|", "|")
+                               for sym
+                               in pyre.split(r"(?<!\\)\|", tlabel, maxsplit=2))
+                for target in targets:
+                    if isinstance(target, tuple):
+                        dest, weight = target
+                    else:
+                        dest = target
+                        weight = 0.0
+                    dest_state = add_up_to(int(dest))
+                    src_state.add_transition(dest_state, labels, weight)
+        return fst
+
     # ==================
     # Rendering
     # ==================

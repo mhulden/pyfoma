@@ -288,6 +288,19 @@ class TestUtil(unittest.TestCase):
         fst2 = FST.regex(rx)
         assert json.dumps(fst1.todict()) == json.dumps(fst2.todict())
 
+    def test_fromdict(self):
+        """Ensure that we can reload from dictionary / json format"""
+        rx = r"""
+        $^rewrite(s:(s | 'š')
+            | c:(c | 'č')
+            | \?:Ɂ
+            | 7:Ɂ
+            | ʔ:Ɂ)
+        """
+        fst1 = FST.regex(rx)
+        fst2 = FST.fromdict(fst1.todict())
+        assert json.dumps(fst1.todict()) == json.dumps(fst2.todict())
+
     def test_to_js_on(self):
         # Has no maxlen anymore, downstream code should do that
         d = self.fst.todict()
