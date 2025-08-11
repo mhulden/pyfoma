@@ -15,9 +15,9 @@ class RegexParse:
     # Used to set names so that these functions have useful error messages
     _builtins_project_lambda = lambda *args, **kwargs: fst.project(*args, dim=int(kwargs.get('dim', '-1')))
     _builtins_project_lambda.__name__ = "project"
-    _builtins_input_lambda = lambda x: fst.project(x, dim=0)
+    _builtins_input_lambda = lambda x: fst.project(x, dim=0).epsilon_remove().determinize_as_dfa()
     _builtins_input_lambda.__name__ = "input"
-    _builtins_output_lambda = lambda x: fst.project(x, dim=-1)
+    _builtins_output_lambda = lambda x: fst.project(x, dim=-1).epsilon_remove().determinize_as_dfa()
     _builtins_output_lambda.__name__ = "output"
 
     builtins = {'reverse': fst.reverse,
