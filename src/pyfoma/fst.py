@@ -497,16 +497,17 @@ class FST:
     # Application
     # ==================
 
-    def generate(self: 'FST', word, weights=False, tokenize_outputs=False, obey_flags=True, print_flags=False):
+    def generate(self: 'FST', word: Union[str, List[str]], weights=False, tokenize_outputs=False, obey_flags=True, print_flags=False):
         """Pass word through FST and return generator that yields all outputs."""
         yield from self.apply(word, inverse=False, weights=weights, tokenize_outputs=tokenize_outputs, obey_flags=obey_flags, print_flags=print_flags)
 
-    def analyze(self: 'FST', word, weights=False, tokenize_outputs=False, obey_flags=True, print_flags=False):
+    def analyze(self: 'FST', word: Union[str, List[str]], weights=False, tokenize_outputs=False, obey_flags=True, print_flags=False):
         """Pass word through FST and return generator that yields all inputs."""
         yield from self.apply(word, inverse=True, weights=weights, tokenize_outputs=tokenize_outputs, obey_flags=obey_flags, print_flags=print_flags)
 
     def apply(self: 'FST', word: Union[str, List[str]], inverse=False, weights=False, tokenize_outputs=False, obey_flags=True, print_flags=False):
         """Pass word through FST and return generator that yields outputs.
+           If `word` is a string, it will be tokenized first.
            if inverse == True, map from range to domain.
            weights is by default False. To see the cost, set weights to True.
            obey_flags toggles whether invalid flag diacritic
