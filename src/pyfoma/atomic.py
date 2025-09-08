@@ -1,14 +1,22 @@
 from collections import defaultdict
-from typing import Iterable
-from .transition import Transition
+from typing import Dict, Iterable, Set
 import itertools
 import heapq
+from typing_extensions import Tuple
+
+class Transition:
+    __slots__ = ['targetstate', 'label', 'weight']
+    def __init__(self, targetstate: "State", label, weight):
+        self.targetstate = targetstate
+        self.label = label
+        self.weight = weight
+
 
 class State:
     def __init__(self, finalweight = None, name = None):
         __slots__ = ['transitions', '_transitionsin', '_transitionsout', 'finalweight', 'name']
         # Index both the first and last elements lazily (e.g. compose needs it)
-        self.transitions = dict()     # (l_1,...,l_n):{transition1, transition2, ...}
+        self.transitions: Dict[Tuple, Set[Transition]] = dict()     # (l_1,...,l_n):{transition1, transition2, ...}
         self._transitionsin = None    # l_1:(label, transition1), (label, transition2), ... }
         self._transitionsout = None   # l_n:(label, transition1), (label, transition2, ...)}
         if finalweight is None:
@@ -20,23 +28,21 @@ class State:
     def transitionsin(self) -> dict:
         """Returns a dictionary of the transitions from a state, indexed by the input
            label, i.e. the first member of the label tuple."""
-        if self._transitionsin is None:
-            self._transitionsin = defaultdict(set)
-            for label, newtrans in self.transitions.items():
-                for t in newtrans:
-                    self._transitionsin[label[0]] |= {(label, t)}
-        return self._transitionsin
+        _transitionsin = defaultdict(set)
+        for label, newtrans in self.transitions.items():
+            for t in newtrans:
+                _transitionsin[label[0]] |= {(label, t)}
+        return _transitionsin
 
     @property
     def transitionsout(self):
         """Returns a dictionary of the transitions from a state, indexed by the output
            label, i.e. the last member of the label tuple."""
-        if self._transitionsout is None:
-            self._transitionsout = defaultdict(set)
-            for label, newtrans in self.transitions.items():
-                for t in newtrans:
-                    self._transitionsout[label[-1]] |= {(label, t)}
-        return self._transitionsout
+        _transitionsout = defaultdict(set)
+        for label, newtrans in self.transitions.items():
+            for t in newtrans:
+                _transitionsout[label[-1]] |= {(label, t)}
+        return _transitionsout
 
     def rename_label(self, original, new):
         """Changes labels in a state's transitions from original to new."""

@@ -7,9 +7,8 @@ import pickle
 import functools
 import gzip
 
-from pyfoma import transition
 from pyfoma.flag import FlagStringFilter, FlagOp
-from pyfoma.state import State, all_transitions
+from pyfoma.atomic import State, Transition, all_transitions
 from pyfoma._private import util, algorithms, partition_refinement
 
 
@@ -1550,8 +1549,8 @@ class FST:
                 currentstate.finalweight = oplus(t1s.finalweight, t2s.finalweight)
             # Get all outgoing labels we want to follow
             for lbl in pathfollow(t1s.transitions.keys(), t2s.transitions.keys()):
-                for outtr in t1s.transitions.get(lbl, (transition.Transition(dead1, lbl, float('inf')), )):
-                    for intr in t2s.transitions.get(lbl, (transition.Transition(dead2, lbl, float('inf')), )):
+                for outtr in t1s.transitions.get(lbl, (Transition(dead1, lbl, float('inf')), )):
+                    for intr in t2s.transitions.get(lbl, (Transition(dead2, lbl, float('inf')), )):
                         if (outtr.targetstate, intr.targetstate) not in S:
                             Q.append((outtr.targetstate, intr.targetstate))
                             S[(outtr.targetstate, intr.targetstate)] = State()
