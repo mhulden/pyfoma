@@ -7,6 +7,7 @@ import pickle
 import functools
 import gzip
 
+from pyfoma import atomic
 from pyfoma.flag import FlagStringFilter, FlagOp
 from pyfoma.atomic import State, Transition, all_transitions
 from pyfoma._private import util, algorithms, partition_refinement
@@ -1175,14 +1176,14 @@ class FST:
 
     def minimize(self) -> 'FST':
         """Minimize by constrained reverse subset construction, Hopcroft-ish."""
-        reverse_index = states.create_reverse_index(self.states)
+        reverse_index = atomic.create_reverse_index(self.states)
         finalset, nonfinalset = self.finalstates.copy(), self.states - self.finalstates
         initialpartition = [x for x in (finalset, nonfinalset) if len(x) > 0]
         P = partition_refinement.PartitionRefinement(initialpartition)
         Agenda = {id(x) for x in (finalset, nonfinalset) if len(x) > 0}
         while Agenda:
             S = P.sets[Agenda.pop()] # convert id to the actual set it corresponds to
-            for label, sourcestates in states.find_sourcestates(reverse_index, S):
+            for label, sourcestates in atomic.find_sourcestates(reverse_index, S):
                 splits = P.refine(sourcestates) # returns list of (A & S, A - S) tuples
                 Agenda |= {new for new, _ in splits} # Only place A & S on Agenda
         equivalenceclasses = P.astuples()
