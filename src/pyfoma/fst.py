@@ -1080,7 +1080,7 @@ class FST:
         # Also, if t is final and s is not, make s final with cost t.finalweight ⊗ w'
         # If s and t are both final, make s's finalweight s.final ⊕ (t.finalweight ⊗ w')
 
-        eclosures = {s:states.epsilon_closure(s) for s in self.states}
+        eclosures = {s:atomic.epsilon_closure(s) for s in self.states}
         if all(len(ec) == 0 for ec in eclosures.values()): # bail, no epsilon transitions
             return self.__copy__()
         new_fst, mapping = self.copy_filtered(labelfilter = lambda lbl: any(len(sublabel) != 0 for sublabel in lbl))
