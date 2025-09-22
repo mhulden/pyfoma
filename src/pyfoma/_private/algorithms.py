@@ -73,7 +73,6 @@ def dijkstra(fst: 'FST', state) -> float:
     return float("inf")
 
 def best_word(fst: 'FST') -> List:
-    """The cost of the cheapest path from state to a final state. Go Edsger!"""
     explored, cntr = {fst.initialstate}, itertools.count()
     Q = [(0.0, next(cntr), fst.initialstate, [])]
     while Q:
