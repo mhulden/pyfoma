@@ -71,3 +71,21 @@ def dijkstra(fst: 'FST', state) -> float:
             if trgt not in explored:
                 heapq.heappush(Q, (cost + w, next(cntr), trgt))
     return float("inf")
+
+def best_word(fst: 'FST') -> str:
+    """The cost of the cheapest path from state to a final state. Go Edsger!"""
+    explored, cntr = {fst.initialstate}, itertools.count()
+    Q = [(0.0, next(cntr), fst.initialstate, [])]
+    while Q:
+        w, _ , s, seq = heapq.heappop(Q)
+        if s is None:
+            return "".join(seq)
+        explored.add(s)
+        if s in fst.finalstates:
+            heapq.heappush(Q, (w + s.finalweight, next(cntr), None, seq))
+
+        for label, transitions in s.transitions.items():
+            cheapest_transition = min(transitions, key=lambda t: t.weight)
+            if (target_state := cheapest_transition.targetstate) not in explored:
+                heapq.heappush(Q, (cheapest_transition.weight + w, next(cntr), target_state, seq + [label]))
+    return ""
