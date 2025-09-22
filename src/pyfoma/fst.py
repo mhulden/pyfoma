@@ -7,7 +7,7 @@ import pickle
 import functools
 import gzip
 
-from pyfoma._private.exceptions import NoFinalStateException
+from pyfoma._private.exceptions import NoFinalStatesException
 from pyfoma.flag import FlagStringFilter, FlagOp
 from pyfoma._private.states import State, all_transitions
 from pyfoma._private import util, algorithms, states, partition_refinement, transition
@@ -185,51 +185,51 @@ class FST:
                     currstate.add_transition(targetstate, newtuple, w)
                     currstate = targetstate
         return newfst
-
+    
     @classmethod
     def from_fomastring(cls, fomastr: str) -> 'FST':
         """
         =====================
         Support for foma i/o
         =====================
-
-        The foma file format is a simple string representation of an FST. This representation can be compressed
+        
+        The foma file format is a simple string representation of an FST. This representation can be compressed 
         with gzip if stored in a file. A foma-file may contain multiple FSTs, each with its own name (a string).
-
+        
         With some very minor limitations, the foma file format can be used to save/load FSTs in pyfoma as well.
-
+        
         We provide four methods for interchange with foma; two for converting an FST object
         to a string and vice versa, and two for loading/saving foma-files:
-
+        
         to_fomastring(fst: 'FST', fstname:str) -> str
         from_fomastring(fomastr: str) -> 'FST'
-
+        
         load_foma(str: path) -> Dict[str, 'FST']
         save_foma(fsts: Dict)
-
-        The file format supports weights in FSTs (which will be ignored if loaded in foma). The main limitation
+        
+        The file format supports weights in FSTs (which will be ignored if loaded in foma). The main limitation 
         of the file format is that FSTs can be maximally two-tape FSTs, i.e. label tuples cannot be longer than 2.
-
+        
         Foma relies on some information being available in the string representation
-        (such as the number of transitions, paths, and final states) so we need to
+        (such as the number of transitions, paths, and final states) so we need to 
         calculate those before putting together a string representation of an FST.
-
+        
         The string format is as follows:
-
+        
         ##foma-net VERSION##
-        ##props##
-        PROPERTIES LINE
-        ##weights##
-        ... WEIGHTS LINES corresponding to transition lines ...
-        ##sigma##
-        ...SIGMA LINES...
-        ##states##
+        ##props## 
+        PROPERTIES LINE 
+        ##weights## 
+        ... WEIGHTS LINES corresponding to transition lines ... 
+        ##sigma## 
+        ...SIGMA LINES... 
+        ##states## 
         ...TRANSITION LINES...
         -1 -1 -1 -1 -1
         ##end##
-
+        
         Example (from FST.re("a.<5.0>")):
-
+        
         ##foma-net 1.0##
         ##props##
         1 3 3 5 1 2 1 2 2 1 1 64 0A611F40
@@ -249,70 +249,70 @@ class FST:
         2 -1 -1 1
         -1 -1 -1 -1 -1
         ##end##
-
-        The initial identifier is "##foma-net 1.0##"
-        where 1.0 is the version number for the file format
-        followed by the line "##props##"
-        which is followed by a line of space separated integers
-        which correpond to:
-
-          arity  arccount  statecount  linecount  finalcount  pathcount  is_deterministic
+        
+        The initial identifier is "##foma-net 1.0##" 
+        where 1.0 is the version number for the file format 
+        followed by the line "##props##" 
+        which is followed by a line of space separated integers 
+        which correpond to: 
+        
+          arity  arccount  statecount  linecount  finalcount  pathcount  is_deterministic 
           is_pruned  is_minimized  is_epsilon_free  is_loop_free  extras  fst_name
-
+        
         where fst_name is used if defined networks are saved/loaded in foma. The booleans
         (like is_deterministic) are 0 = NO, 1 = YES, 2 = UNKNOWN
-
+        
         "extras" compresses a few details used in foma into the 8 least significant bits of
         the integer:
-
+        
           ppqqrrss ; pp = has_weights, qq = arcs_sorted_out, rr = arcs_sorted_in, ss = is_completed
-
+        
         Following the props line, we accept anything (for future expansion)
         until we find ##sigma## or ##weights##
-
-        The section beginning with "##sigma##" consists of lines with two space-separated
+        
+        The section beginning with "##sigma##" consists of lines with two space-separated 
         fields: "number string", correponding to the symbol number and the symbol itself.
-        Symbols themselves can contain a space character since we split on the first
-        occurrence of space.
-
-        The section beginning with "##states##" consists of lines of ASCII integers
-        with 2-5 fields to avoid some redundancy in every line corresponding to a
-        transition where otherwise state numbers would be unnecessarily repeated and
-        out symbols also (if in = out as is the case for recognizers/simple automata)
-
-        The information depending on the number of fields in the lines is as follows:
-
-          2: in target (here state_no is the same as the last mentioned one and out = in)
-          3: in out target (again, state_no is the same as the last mentioned one)
-          4: state_no in target final_state (where out = in)
-          5: state_no in out target final_state
-
-        States without outgoing transitions are represented as a 4-field:
-
-          state_no -1 -1 final_state
-
+        Symbols themselves can contain a space character since we split on the first 
+        occurrence of space. 
+        
+        The section beginning with "##states##" consists of lines of ASCII integers 
+        with 2-5 fields to avoid some redundancy in every line corresponding to a 
+        transition where otherwise state numbers would be unnecessarily repeated and 
+        out symbols also (if in = out as is the case for recognizers/simple automata) 
+        
+        The information depending on the number of fields in the lines is as follows: 
+        
+          2: in target (here state_no is the same as the last mentioned one and out = in) 
+          3: in out target (again, state_no is the same as the last mentioned one) 
+          4: state_no in target final_state (where out = in) 
+          5: state_no in out target final_state 
+         
+        States without outgoing transitions are represented as a 4-field: 
+        
+          state_no -1 -1 final_state 
+        
         We add a ##weights## section that has exactly as many lines as the ##states##-section does,
         disregarding the sentinel line "-1 -1 -1 -1 -1".
         Each line consists of one or two space-separated weights, with "inf" representing infinity.
-        If there is only one weight, that weight refers to a transition declared on the corresponding
+        If there is only one weight, that weight refers to a transition declared on the corresponding 
         ##states##-line or the finalweight for lines that declare a state with no outgoing transitions.
         If there are two weights, the first weight corresponds to the transition, and the second
         corresponds to the final weight on the source state of that line.
-
-        For example, here is an automaton with two states declaring the language (ab)*, 3 = a, 4 = b.
-
+        
+        For example, here is an automaton with two states declaring the language (ab)*, 3 = a, 4 = b. 
+        
         ##states##
         0 3 1 1
         1 4 0 0
         -1 -1 -1 -1 -1   < SENTINEL LINE
-
+        
         If we had a weight of 1.0 for the two transitions, and a weight of 2.0 for the final weight of state 0,
         the ##weights##-lines would look as follows:
-
+        
         ##weights##
         1.0 2.0        < transition has weight 1.0, finalweight for this state is 2.0
         1.0            < transition has weight 1.0
-
+        
         Foma distinguishes between @ (= @_IDENTITY_SYMBOL_@) and ? (= @_UNKNOWN_SYMBOL_@) on transitions
         whereas pyfoma does not - only '.' is special in pyfoma.
         Both get translated to '.' in pyfoma. However, in the other direction e.g. the label ('.', 'a') becomes
@@ -320,7 +320,7 @@ class FST:
         pyfoma cannot currently express ?:?, which in foma means "translate some symbol outside the alphabet
         to some other symbol outside the alphabet" (i.e. not an identity relationship).
         """
-
+        
         fomastring = iter(fomastr.split("\n"))
         mode = 'start'
         weightslines = []
@@ -337,13 +337,13 @@ class FST:
                     sigmastr = next(fomastring)
                 mode = sigmastr
                 alphabet, statedict = {}, {'0':newfst.initialstate} # Initial state must be 0
-
+                
             elif mode == '##weights##': # collect weights (if found)
                 if line == "##sigma##":
                     mode = "##sigma##"
                 else:
                     weightslines.append(line)
-
+            
             elif mode == '##sigma##':  # collect alphabet
                 if line == '##states##':
                     mode = 'states'
@@ -358,26 +358,26 @@ class FST:
                     continue
                 number, symbol = line.split(" ", 1) # First space separates the number and the symbol string
                 alphabet[number] = symbol
-
+    
             elif mode == 'states': # collect transitions
 
                 if line == '##end##':
                     return newfst
                 if line == "-1 -1 -1 -1 -1":
                     continue
-
+                    
                 weightlineptr += 1
                 if weightslines:
                     weightfields = weightslines[weightlineptr].split()
 
                 final_state = False
                 outsym = None
-
+    
                 transition = line.split()
-
+                
                 if len(transition) == 5:
                     source, insym, outsym, target, final_state = transition
-
+                    
                 elif len(transition) == 4:
                     source, insym, target, final_state = transition
                     outsym = None
@@ -391,15 +391,15 @@ class FST:
                             statedict[source].finalweight = weightfields[0]
                         else:
                             statedict[source].finalweight = 0.0
-
-
+                        
+    
                 elif len(transition) == 3:
                     insym, outsym, target = transition
-
+    
                 elif len(transition) == 2:
                     insym, target = transition
                     outsym = None
-
+    
                 for state in [source, target]:
                     if state not in statedict and state != '-1':
                         # Create new state if not seen before
@@ -407,7 +407,7 @@ class FST:
                         newfst.states.add(statedict[state])
                         statedict[state].name = state
                         statedict[state].finalweight = float('inf') # May be updated later
-
+    
                 if final_state == '1':
                     if weightslines:
                         if len(weightfields) == 2:
@@ -417,7 +417,7 @@ class FST:
                     else:
                         statedict[source].finalweight = 0.0
                     newfst.finalstates.add(statedict[source])
-
+    
                 if insym != '-1':
                     if outsym == None:
                         label = (alphabet[insym],)
@@ -431,7 +431,7 @@ class FST:
 
     def to_fomastring(self, fstname = None) -> str:
         """Converts an FST to foma's string-based representation."""
-
+    
         NO, YES, UNKNOWN = 0, 1, 2
         outfst = self.label_states_topology()
         arity_ = outfst.arity()
@@ -446,7 +446,7 @@ class FST:
         is_loop_free_ = NO if pathcount_ == -1 else YES
         weighted_ = YES if outfst.has_weights() else NO
         extras_ = weighted_ << 6
-
+    
         sigmamap = {}
         cntr = 3
         for symbol in sorted(list(outfst.alphabet)):
@@ -461,14 +461,14 @@ class FST:
         sigmastr = ["##sigma##"]
         for name, num in sorted(list(sigmamap.items()), key = lambda x: int(x[1])):
             sigmastr.append(f"{num} {name}")
-
+    
         statestr = ["##states##"]
         weightstr = ["##weights##"]
         linecount_ = 1  # Foma needs to know the number of lines in the ##states## section
         for state in [outfst.initialstate] + list(outfst.states - {outfst.initialstate}):
             ts = list(state.all_transitions())
             finalstate = 1 if state in outfst.finalstates else 0
-            if len(ts) == 0:
+            if len(ts) == 0:            
                 statestr.append(f"{state.name} -1 -1 {finalstate}")
                 weightstr.append(f"{state.finalweight}")
                 linecount_ += 1
@@ -497,7 +497,7 @@ class FST:
                 linecount_ += 1
                 firsttransition = False
         statestr.append("-1 -1 -1 -1 -1")
-
+    
         intro = ["##foma-net 1.0##", "##props##"]
         if fstname == None:
             fstname = f"{id(outfst):08X}"[-8:] # Generate name if not given
@@ -508,7 +508,7 @@ class FST:
             fststring = "\n".join(intro + sigmastr + statestr + ["##end##"]) + "\n"
         return fststring
 
-
+                
     # ==================
     # Saving and Loading
     # ==================
@@ -550,7 +550,7 @@ class FST:
             fomastrings = gz.read().split("\n")
         except Exception as e:
             raise IOError(f"Error reading file {path}: {str(e)}")
-
+    
         splits = [0] + [idx+1 for idx, line in enumerate(fomastrings) if line == "##end##"]
         slices, names = [], []
         for i in range(len(splits)-1):
@@ -909,8 +909,7 @@ class FST:
            treated as epsilons in the input. print_flags toggels whether flag
            diacritics are printed in the output. """
         if len(self.finalstates) == 0:
-            raise NoFinalStateException()
-
+            raise NoFinalStatesException()
         IN, OUT = [-1, 0] if inverse else [0, -1]  # Tuple positions for input, output
         cntr = itertools.count()
         if isinstance(word, str):
@@ -949,8 +948,7 @@ class FST:
     def words(self: 'FST'):
         """A generator to yield all words. Yay BFS!"""
         if len(self.finalstates) == 0:
-            raise NoFinalStateException()
-
+            raise NoFinalStatesException()
         Q = deque([(self.initialstate, 0.0, [])])
         while Q:
             s, cost, seq = Q.popleft()
@@ -966,8 +964,7 @@ class FST:
     def words_cheapest(self):
         """A generator to yield all words in order of cost, cheapest first."""
         if len(self.finalstates) == 0:
-            raise NoFinalStateException()
-
+            raise NoFinalStatesException()
         cntr = itertools.count()
         Q: List[Tuple[float, int, Optional[State], List]] = [(0.0, next(cntr), self.initialstate, [])]
         while Q:
@@ -1694,7 +1691,7 @@ class FST:
             q1q2[s].finalweight = s.finalweight
 
         return newfst, q1q2
-
+        
 
     def pathcount(self):
         """Count distinct paths from initialstate to any final state."""
@@ -1707,7 +1704,7 @@ class FST:
         def child_iter(s):
             # Unique children only
             return iter(s.all_targets())
-
+    
         # Iterative DFS with early cycle detection
         stack = []
         color[self.initialstate] = GRAY
@@ -1751,11 +1748,11 @@ class FST:
             return max(len(label) for s in self.states for label, _ in s.all_transitions())
         except ValueError:
             return 1  # No transitions exist
-
+    
     def arccount(self):
         """Counts number of transitions in FST."""
         return sum(len(list(s.all_transitions())) for s in self.states)
-
+    
     def is_deterministic(self):
         """Return True if the FST is deterministic in the DFA sense, False otherwise."""
         for state in self.states:
@@ -1766,7 +1763,7 @@ class FST:
                     return False  # Non-deterministic: multiple transitions with same input or epsilon
                 input_labels.add(label)
         return True
-
+    
     def has_weights(self):
         """Determines if FST has non-trivial weights, i.e. not all 0.0 for transitions
            and final states."""
