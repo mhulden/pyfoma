@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Dict, Iterable, Set
+from typing import Dict, Iterable, Optional, Set
 import itertools
 import heapq
 from typing_extensions import Tuple
@@ -13,8 +13,9 @@ class Transition:
 
 
 class State:
-    def __init__(self, finalweight = None, name = None):
-        __slots__ = ['transitions', '_transitionsin', '_transitionsout', 'finalweight', 'name']
+    __slots__ = 'transitions', '_transitionsin', '_transitionsout', 'finalweight', 'name'
+
+    def __init__(self, finalweight: Optional[float] = None, name: Optional[str] = None):
         # Index both the first and last elements lazily (e.g. compose needs it)
         self.transitions: Dict[Tuple, Set[Transition]] = dict()     # (l_1,...,l_n):{transition1, transition2, ...}
         self._transitionsin = None    # l_1:(label, transition1), (label, transition2), ... }
