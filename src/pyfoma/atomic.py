@@ -61,10 +61,11 @@ class State:
                 newt.pop(label)
         self.transitions = newt
 
-    def add_transition(self, other, label, weight=0.0):
+    def add_transition(self, other: 'State', label, weight=0.0):
         """Add transition from self to other with label and weight."""
         newtrans = Transition(other, label, weight)
         self.transitions[label] = self.transitions.get(label, set()) | {newtrans}
+        return newtrans
 
     def all_transitions(self):
         """Generator for all transitions out from a given state."""
