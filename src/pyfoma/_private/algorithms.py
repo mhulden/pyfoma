@@ -4,7 +4,7 @@
 import heapq
 import itertools
 from collections import deque
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, List
 
 from pyfoma._private.exceptions import NoFinalStatesException
 
@@ -76,3 +76,20 @@ def dijkstra(fst: 'FST', state) -> float:
             if trgt not in explored:
                 heapq.heappush(Q, (cost + w, next(cntr), trgt))
     return float("inf")
+
+def best_word(fst: 'FST') -> List:
+    explored, cntr = {fst.initialstate}, itertools.count()
+    Q = [(0.0, next(cntr), fst.initialstate, [])]
+    while Q:
+        w, _ , s, seq = heapq.heappop(Q)
+        if s is None:
+            return seq
+        explored.add(s)
+        if s in fst.finalstates:
+            heapq.heappush(Q, (w + s.finalweight, next(cntr), None, seq))
+
+        for label, transitions in s.transitions.items():
+            cheapest_transition = min(transitions, key=lambda t: t.weight)
+            if (target_state := cheapest_transition.targetstate) not in explored:
+                heapq.heappush(Q, (cheapest_transition.weight + w, next(cntr), target_state, seq + [label]))
+    return []

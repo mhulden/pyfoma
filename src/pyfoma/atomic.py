@@ -1,42 +1,51 @@
 from collections import defaultdict
-from typing import Iterable
-from .transition import Transition
+from typing import Dict, Iterable, Optional, Set
 import itertools
 import heapq
+from typing_extensions import Tuple
+
+class Transition:
+    __slots__ = 'targetstate', 'label', 'weight'
+    def __init__(self, targetstate: "State", label, weight):
+        self.targetstate = targetstate
+        self.label = label
+        self.weight = weight
+
 
 class State:
-    def __init__(self, finalweight = None, name = None):
-        __slots__ = ['transitions', '_transitionsin', '_transitionsout', 'finalweight', 'name']
+    __slots__ = 'transitions', '_transitions_by_input', '_transitions_by_output', 'finalweight', 'name'
+
+    def __init__(self, finalweight: Optional[float] = None, name: Optional[str] = None):
         # Index both the first and last elements lazily (e.g. compose needs it)
-        self.transitions = dict()     # (l_1,...,l_n):{transition1, transition2, ...}
-        self._transitionsin = None    # l_1:(label, transition1), (label, transition2), ... }
-        self._transitionsout = None   # l_n:(label, transition1), (label, transition2, ...)}
+        self.transitions: Dict[Tuple, Set[Transition]] = dict()     # (l_1,...,l_n):{transition1, transition2, ...}
+        self._transitions_by_input = None    # l_1:(label, transition1), (label, transition2), ... }
+        self._transitions_by_output = None   # l_n:(label, transition1), (label, transition2, ...)}
         if finalweight is None:
             finalweight = float("inf")
         self.finalweight = finalweight
         self.name = name
 
     @property
-    def transitionsin(self) -> dict:
+    def transitions_by_input(self) -> dict:
         """Returns a dictionary of the transitions from a state, indexed by the input
            label, i.e. the first member of the label tuple."""
-        if self._transitionsin is None:
-            self._transitionsin = defaultdict(set)
+        if self._transitions_by_input is None:
+            self._transitions_by_input = defaultdict(set)
             for label, newtrans in self.transitions.items():
-                for t in newtrans:
-                    self._transitionsin[label[0]] |= {(label, t)}
-        return self._transitionsin
+                    for t in newtrans:
+                        self._transitions_by_input[label[0]] |= {(label, t)}
+        return self._transitions_by_input
 
     @property
-    def transitionsout(self):
+    def transitions_by_output(self):
         """Returns a dictionary of the transitions from a state, indexed by the output
            label, i.e. the last member of the label tuple."""
-        if self._transitionsout is None:
-            self._transitionsout = defaultdict(set)
+        if self._transitions_by_output is None:
+            self._transitions_by_output = defaultdict(set)
             for label, newtrans in self.transitions.items():
                 for t in newtrans:
-                    self._transitionsout[label[-1]] |= {(label, t)}
-        return self._transitionsout
+                    self._transitions_by_output[label[-1]] |= {(label, t)}
+        return self._transitions_by_output
 
     def rename_label(self, original, new):
         """Changes labels in a state's transitions from original to new."""
@@ -54,10 +63,11 @@ class State:
                 newt.pop(label)
         self.transitions = newt
 
-    def add_transition(self, other, label, weight=0.0):
+    def add_transition(self, other: 'State', label, weight=0.0):
         """Add transition from self to other with label and weight."""
         newtrans = Transition(other, label, weight)
         self.transitions[label] = self.transitions.get(label, set()) | {newtrans}
+        return newtrans
 
     def all_transitions(self):
         """Generator for all transitions out from a given state."""
