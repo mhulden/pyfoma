@@ -5,7 +5,7 @@ import heapq
 from typing_extensions import Tuple
 
 class Transition:
-    __slots__ = ['targetstate', 'label', 'weight']
+    __slots__ = 'targetstate', 'label', 'weight'
     def __init__(self, targetstate: "State", label, weight):
         self.targetstate = targetstate
         self.label = label
