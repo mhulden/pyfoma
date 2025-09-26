@@ -1345,10 +1345,10 @@ class FST:
             if A in fst1.finalstates and B in fst2.finalstates:
                 newfst.finalstates.add(currentstate)
                 currentstate.finalweight = A.finalweight + B.finalweight # TODO: oplus
-            for matchsym in A.transitionsout.keys():
+            for matchsym in A.transitions_by_output.keys():
                 if mode == 0 or matchsym != '': # A=x:y B=y:z, or x:0 0:y (only in mode 0)
-                    for outtrans in A.transitionsout.get(matchsym, ()):
-                        for intrans in B.transitionsin.get(matchsym, ()):
+                    for outtrans in A.transitions_by_output.get(matchsym, ()):
+                        for intrans in B.transitions_by_input.get(matchsym, ()):
                             target1 = outtrans[1].targetstate # Transition
                             target2 = intrans[1].targetstate  # Transition
                             if (target1, target2, 0) not in S:
@@ -1359,7 +1359,7 @@ class FST:
                             # currentstate.add_transition(S[(target1, target2)], outtrans[1].label[:-1] + intrans[1].label, outtrans[1].weight + intrans[1].weight)
                             newlabel = _mergetuples(outtrans[1].label, intrans[1].label)
                             currentstate.add_transition(S[(target1, target2, 0)], newlabel, outtrans[1].weight + intrans[1].weight)
-            for outtrans in A.transitionsout.get('', ()): # B waits
+            for outtrans in A.transitions_by_output.get('', ()): # B waits
                 if mode == 2:
                     break
                 target1, target2 = outtrans[1].targetstate, B
@@ -1369,7 +1369,7 @@ class FST:
                     newfst.states.add(S[(target1, target2, 1)])
                 newlabel = outtrans[1].label
                 currentstate.add_transition(S[(target1, target2, 1)], newlabel, outtrans[1].weight)
-            for intrans in B.transitionsin.get('', ()): # A waits
+            for intrans in B.transitions_by_input.get('', ()): # A waits
                 if mode == 1:
                     break
                 target1, target2 = A, intrans[1].targetstate
