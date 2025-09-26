@@ -6,6 +6,8 @@ import itertools
 from collections import deque
 from typing import TYPE_CHECKING
 
+from pyfoma._private.exceptions import NoFinalStatesException
+
 if TYPE_CHECKING:
     from ..fst import FST
 
@@ -57,6 +59,9 @@ def scc(fst: 'FST') -> set:
 
 def dijkstra(fst: 'FST', state) -> float:
     """The cost of the cheapest path from state to a final state. Go Edsger!"""
+    if len(fst.finalstates) == 0:
+        raise NoFinalStatesException()
+
     explored, cntr = {state}, itertools.count()  # decrease-key is for wusses
     Q = [(0.0, next(cntr), state)] # Middle is dummy cntr to avoid key ties
     while Q:

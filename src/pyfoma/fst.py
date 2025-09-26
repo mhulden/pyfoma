@@ -7,6 +7,7 @@ import pickle
 import functools
 import gzip
 
+from pyfoma._private.exceptions import NoFinalStatesException
 from pyfoma.flag import FlagStringFilter, FlagOp
 from pyfoma._private.states import State, all_transitions
 from pyfoma._private import util, algorithms, states, partition_refinement, transition
@@ -907,6 +908,8 @@ class FST:
            combinations are filtered out. By default, flags are
            treated as epsilons in the input. print_flags toggels whether flag
            diacritics are printed in the output. """
+        if len(self.finalstates) == 0:
+            raise NoFinalStatesException()
         IN, OUT = [-1, 0] if inverse else [0, -1]  # Tuple positions for input, output
         cntr = itertools.count()
         if isinstance(word, str):
@@ -944,6 +947,8 @@ class FST:
 
     def words(self: 'FST'):
         """A generator to yield all words. Yay BFS!"""
+        if len(self.finalstates) == 0:
+            raise NoFinalStatesException()
         Q = deque([(self.initialstate, 0.0, [])])
         while Q:
             s, cost, seq = Q.popleft()
@@ -958,6 +963,8 @@ class FST:
 
     def words_cheapest(self):
         """A generator to yield all words in order of cost, cheapest first."""
+        if len(self.finalstates) == 0:
+            raise NoFinalStatesException()
         cntr = itertools.count()
         Q: List[Tuple[float, int, Optional[State], List]] = [(0.0, next(cntr), self.initialstate, [])]
         while Q:
