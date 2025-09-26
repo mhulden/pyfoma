@@ -29,21 +29,23 @@ class State:
     def transitionsin(self) -> dict:
         """Returns a dictionary of the transitions from a state, indexed by the input
            label, i.e. the first member of the label tuple."""
-        _transitionsin = defaultdict(set)
-        for label, newtrans in self.transitions.items():
-            for t in newtrans:
-                _transitionsin[label[0]] |= {(label, t)}
-        return _transitionsin
+        if self._transitionsin is None:
+            self._transitionsin = defaultdict(set)
+            for label, newtrans in self.transitions.items():
+                    for t in newtrans:
+                        self._transitionsin[label[0]] |= {(label, t)}
+        return self._transitionsin
 
     @property
     def transitionsout(self):
         """Returns a dictionary of the transitions from a state, indexed by the output
            label, i.e. the last member of the label tuple."""
-        _transitionsout = defaultdict(set)
-        for label, newtrans in self.transitions.items():
-            for t in newtrans:
-                _transitionsout[label[-1]] |= {(label, t)}
-        return _transitionsout
+        if self._transitionsout is None:
+            self._transitionsout = defaultdict(set)
+            for label, newtrans in self.transitions.items():
+                for t in newtrans:
+                    self._transitionsout[label[-1]] |= {(label, t)}
+        return self._transitionsout
 
     def rename_label(self, original, new):
         """Changes labels in a state's transitions from original to new."""
