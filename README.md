@@ -21,10 +21,18 @@ Next, check out the [documentation](https://mhulden.github.io/pyfoma/)!
 ## Contributing
 
 <!-- TODO: Include details on how to open PRs -->
+```bash
+pip install -e .[dev]
+
+# Build Cython modules
+python setup.py build_ext --inplace
+```
 
 ### Rebuilding the documentation
 
 ```bash
+brew install sphinx-doc # if not installed
+
 # Update automatically-scraped docs
 sphinx-apidoc -o docs src/pyfoma/
 
