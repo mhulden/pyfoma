@@ -1,7 +1,7 @@
 import logging
 import time
 from collections import defaultdict
-from typing import Literal, Optional, cast
+from typing import Literal, Optional, cast, List, Tuple, Dict, Set, Union
 
 from pyfoma.atomic import State, Transition
 from pyfoma.fst import FST
@@ -9,11 +9,12 @@ from tqdm import tqdm
 
 logger = logging.getLogger(__file__)
 
-def prefix(word: list[str]):
+
+def prefix(word: List[str]):
     return [word[:i] for i in range(len(word) + 1)]
 
 
-def lcp(strs: list[str]):
+def lcp(strs: List[str]):
     """Longest common prefix"""
     assert len(strs) > 0
     prefix = ""
@@ -25,15 +26,15 @@ def lcp(strs: list[str]):
     return prefix
 
 
-def build_prefix_tree(samples: list[tuple[list[str], list[str]]]):
+def build_prefix_tree(samples: List[Tuple[List[str], List[str]]]):
     """Builds a tree sequential transducer (prefix tree),
     where outputs are delayed until the word-final symbol (#)."""
 
     # Create states for each prefix in the inputs
-    state_labels: set[tuple] = set()
+    state_labels: Set[tuple] = set()
     alphabet = set("#")
     # Track outputs so we can look them up quickly (O(n) space, O(1) time)
-    label_to_outputs: dict[tuple, str] = dict()
+    label_to_outputs: Dict[tuple, str] = dict()
     for sample in samples:
         if "#" in sample[0]:
             raise ValueError("Inputs should not contain reserved `#` symbol")
@@ -45,7 +46,7 @@ def build_prefix_tree(samples: list[tuple[list[str], list[str]]]):
             logger.warning(
                 f"Provided samples are ambiguous for input {label}!! Ignoring subsequent samples."
             )
-            # raise ValueError(f"Provided samples are ambiguous for input {label}!!")
+
 
     states = {label: State(name="".join(label)) for label in state_labels}
 
@@ -77,7 +78,7 @@ def convert_to_otst(fst: FST):
         if len(state.transitions) == 0:
             return ""
 
-        new_transitions: list[Transition] = []
+        new_transitions: List[Transition] = []
         for transitions in state.transitions.values():
             for transition in transitions:
                 in_label, out_label = transition.label
@@ -87,7 +88,7 @@ def convert_to_otst(fst: FST):
                 new_transitions.append(transition)
 
         # Find and remove the common prefix
-        transition_outputs: set[str] = {
+        transition_outputs: Set[str] = {
             transition.label[1] for transition in new_transitions
         }
         common_prefix = lcp(list(transition_outputs))
@@ -107,7 +108,7 @@ def convert_to_otst(fst: FST):
 
 
 def dedupe_transitions(
-    state: State, incoming_transition_lookup: dict[str, set[tuple[Transition, State]]]
+    state: State, incoming_transition_lookup: Dict[str, Set[Tuple[Transition, State]]]
 ) -> State:
     new_transitions_dict = defaultdict(set)
     for label, transitions in state.transitions.items():
@@ -131,7 +132,7 @@ def merge(
     fst: FST,
     p: State,
     q: State,
-    incoming_transition_lookup: dict[str, set[tuple[Transition, State]]],
+    incoming_transition_lookup: Dict[str, Set[Tuple[Transition, State]]],
 ) -> FST:
     """Merges state q into state p"""
     # Any incoming edges to q will now go to p
@@ -169,7 +170,7 @@ def merge(
     return fst
 
 
-def subseq_violations(fst: FST) -> tuple[State, tuple[Transition, Transition]] | None:
+def subseq_violations(fst: FST) -> Optional[Tuple[State, Tuple[Transition, Transition]]]:
     """Returns None if the transducer is subsequential, and a tuple of (source state, two edges) that violate the determinism condition if it is not subsequential"""
     for state in fst.states:
         state._transitionsin = None
@@ -188,7 +189,7 @@ def push_back(
     suffix: str,
     incoming: Transition,
     source: State,
-    incoming_transition_lookup: dict[str, set[tuple[Transition, State]]],
+    incoming_transition_lookup: Dict[str, Set[Tuple[Transition, State]]],
 ) -> FST:
     """Removes a (output-side) suffix from the incoming edge and
     preprends it to all outgoing edges"""
@@ -212,13 +213,13 @@ def push_back(
 
 
 def ostia(
-    samples: list[tuple[str | list[str], str | list[str]]],
+    samples: List[Tuple[Union[str, List[str]], Union[str, List[str]]]],
     merging_order: Literal["lex", "dd"],
 ):
     """Runs the [OSTIA](https://www.jeffreyheinz.net/classes/24F/655/materials/Oncina-et-al-1993-OSTIA.pdf) algorithm to infer an FST from a dataset.
 
     Args:
-        samples: A list of paired input/output strings, where each string is a `list[str]` or `str`.
+        samples: A list of paired input/output strings, where each string is a `List[str]` or `str`.
         merging_order: "lex" for the lexicographic order of Oncina (1991), "dd" for the data-driven approach of Oncina (1998)
     """
     samples_as_lists = [
@@ -239,11 +240,11 @@ def ostia(
         """Helper function to build lookup tables:
 
         Returns:
-            state_lookup (dict[str, State]): Look up states by name
-            incoming_transition_lookup (dict[str, set[tuple[Transition, State]]]): Look up incoming transitions (and corr. source states) by state name
+            state_lookup (Dict[str, State]): Look up states by name
+            incoming_transition_lookup (Dict[str, Set[Tuple[Transition, State]]]): Look up incoming transitions (and corr. source states) by state name
         """
         state_lookup = {s.name: s for s in fst.states}
-        incoming_transition_lookup: dict[str, set[tuple[Transition, State]]] = {
+        incoming_transition_lookup: Dict[str, Set[Tuple[Transition, State]]] = {
             s.name: set() for s in fst.states if s.name is not None
         }
         for state in fst.states:
@@ -268,14 +269,16 @@ def ostia(
         T: FST,
         q_state_name: str,
         p_state_name: str,
-        state_lookup: dict[str | None, State],
-        incoming_transition_lookup: dict[str, set[tuple[Transition, State]]],
+        state_lookup: Dict[Optional[str], State],
+        incoming_transition_lookup: Dict[str, Set[Tuple[Transition, State]]],
         dry_run=False,
     ) -> (
-        tuple[
-            bool, FST, dict[str | None, State], dict[str, set[tuple[Transition, State]]]
+        Union[
+            Tuple[
+                bool, FST, Dict[Optional[str], State], Dict[str, Set[Tuple[Transition, State]]]
+            ],
+            Optional[int]
         ]
-        | Optional[int]
     ):
         """Attempts to merge state q into state p. If the merge fails, returns None (and none of the inputs should be modified).
 
@@ -373,17 +376,17 @@ def ostia(
     elif merging_order == "dd":
         # https://scispace.com/pdf/the-data-driven-approach-applied-to-the-ostia-algorithm-1hl6z7m4m6.pdf
         # Consolidated states
-        C: set[str] = set([T.initialstate.name])  # type:ignore
+        C: Set[str] = set([T.initialstate.name])  # type:ignore
         # Frontier states
-        F: set[str] = {
+        F: Set[str] = {
             cast(str, t.targetstate.name) for _, t in T.initialstate.all_transitions()
         }
         # Table {f->name: (c->name, equiv_score(f,c))}
-        score_memo_table: dict[str, dict[str, int | None]] = defaultdict(lambda: dict())
+        score_memo_table: Dict[str, Dict[str, Optional[int]]] = defaultdict(lambda: dict())
         while len(F) > 0:
             # We could technically cut this down from O(|C||F|) to like O(most out transitions on a single state)
             # but ¯\_(ツ)_/¯
-            top_scoring: tuple[int, str, str] | None = None
+            top_scoring: Optional[Tuple[int, str, str]] = None
             to_move_to_C = set()
             for f in F:
                 for c in C:

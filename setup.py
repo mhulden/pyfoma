@@ -11,10 +11,11 @@ extensions = cythonize(
     [
         setuptools.Extension(
             name="pyfoma._private.ostia",
-            sources=["src/pyfoma/_private/ostia.pyx"],
+            sources=["src/pyfoma/_private/ostia_c.pyx"],
         ),
     ],
     language_level=3,
+    annotate=True,
 )
 
 setuptools.setup(
