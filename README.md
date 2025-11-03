@@ -22,7 +22,7 @@ Next, check out the [documentation](https://mhulden.github.io/pyfoma/)!
 
 <!-- TODO: Include details on how to open PRs -->
 ```bash
-pip install -e .[dev]
+pip install -e .
 
 # Build Cython modules
 python setup.py build_ext --inplace
