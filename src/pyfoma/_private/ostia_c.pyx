@@ -9,7 +9,7 @@ from libc.string cimport memcpy
 
 
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format="\033[90m%(asctime)s \033[36m[%(levelname)s] \033[1;33m%(module)s\033[0m: %(message)s",
 )
 logger = logging.getLogger(__name__)
@@ -79,7 +79,7 @@ cdef class C_FST:
         return new_fst
 
 
-def ostia(
+cpdef ostia(
     samples: list[tuple[str | list[str], str | list[str]]],
     Mode mode=Mode.lexicographic
 ):
@@ -90,13 +90,16 @@ def ostia(
         )
         for input, output in samples
     ]
-    fst = build_prefix_tree(samples_as_lists)
-
+    cdef C_FST fst = build_prefix_tree(samples_as_lists)
     logger.info(f"Built prefix tree with {fst.n_states} states")
     logger.info("Converting to onward tree sequential transducer")
     convert_to_otst(fst)
     logger.info(f"Built OTST")
+
     logger.info("Merging states")
+    cdef C_State *state
+    cdef int transition_idx
+    cdef C_Transition *transition
     if mode == Mode.lexicographic:
         for q_index in trange(fst.n_states, desc="Merging"):
             # Find p < q where q can merge into p
@@ -106,7 +109,44 @@ def ostia(
                     break
     elif mode == Mode.data_driven:
         # https://scispace.com/pdf/the-data-driven-approach-applied-to-the-ostia-algorithm-1hl6z7m4m6.pdf
-        raise ValueError()
+        C = set([0])
+        # Add all outgoing from initial state to F (frontier)
+        F = set()
+        state = &fst.states[0]
+        transition_idx = state.out_head_idx
+        while transition_idx != -1:
+            transition = &fst.transitions[transition_idx]
+            F.add(transition.target_state_idx)
+            transition_idx = transition.next_out_idx
+        # Main loop
+        while len(F) > 0:
+            # (p, q, score)
+            top_scoring: Optional[Tuple[int, int, int]] = None
+            to_move_to_C = set()
+            for f in F:
+                viable_merge = False
+                for c in C:
+                    _, _, score = try_merge(fst, c, f, True)
+                    if score:
+                        viable_merge = True
+                        if not top_scoring or score > top_scoring[2]:
+                            top_scoring = (c, f, score)
+                if not viable_merge:
+                    # f could not be merged anywhere, so now it goes to C
+                    to_move_to_C.add(f)
+            if top_scoring:
+                (p, q, _) = top_scoring
+                did_merge, fst, _ = try_merge(fst, p, q, False)
+            for f in to_move_to_C:
+                C.add(f)
+                F.remove(f)
+                state = &fst.states[f]
+                transition_idx = state.out_head_idx
+                while transition_idx != -1:
+                    transition = &fst.transitions[transition_idx]
+                    if transition.target_state_idx not in C:
+                        F.add(transition.target_state_idx)
+                    transition_idx = transition.next_out_idx
     else:
         raise ValueError("Unrecognized mode")
 
@@ -256,9 +296,6 @@ cdef tuple try_merge(C_FST fst, int p_idx, int q_idx, bint dry_run):
         w = fst.transition_out_labels[t2.idx]
         prefixes = ["".join(s) for s in prefix(list(w))]
         if (v != w and a == "#") or (t1.target_state_idx < q_idx and v not in prefixes):
-            print(f"v:'{v}'")
-            print(f"w:'{w}'")
-            print("prefix", prefixes)
             break
         u = lcp([v, w])
         push_back(fst, v[len(u):], t1)
