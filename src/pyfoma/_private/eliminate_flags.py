@@ -64,7 +64,7 @@ def substitute_no_val_flags(fst):
                 subst[sym] = f"[[{m.group(2)}!={{}}]]"
     return fst.map_labels(subst)
 
-def eliminate_fst_flags(fst, Xs=None):
+def eliminate_flags(fst, Xs=None):
     """Eliminate all flag diacritics from an FST. 
 
     :param fst: An FST.
@@ -135,7 +135,7 @@ class TestValueFlags(unittest.TestCase):
         assert(len(pos_flag_re) == len(pos_elim_re))
         for re1, re2 in zip(pos_flag_re, pos_elim_re):
             print("With flags:",re1, "Eliminated:", re2)
-            fst1 = eliminate_fst_flags(FST.re(re1))
+            fst1 = eliminate_flags(FST.re(re1))
             fst2 = FST.re(re2)
             self.assertTrue(equivalent(fst1, fst2))
 
@@ -152,7 +152,7 @@ class TestValueFlags(unittest.TestCase):
         ]
         for re1 in neg_flag_re:
             print("With flags:",re1, "Should give an empty FST")
-            fst1 = eliminate_fst_flags(FST.re(re1))
+            fst1 = eliminate_flags(FST.re(re1))
             fst2 = FST()
             self.assertTrue(equivalent(fst1, fst2))
             
@@ -164,5 +164,5 @@ if __name__=="__main__":
     Grammar["C"] = [("a'[[$Y=a]]'", "D"), ("b'[[$Y=b]]'", "D")]
     Grammar["D"] = [("'[[$Y==$X]]'", "#")]
     Lexicon = FST.rlg(Grammar, "S").epsilon_remove().minimize()
-    Lexicon = eliminate_fst_flags(Lexicon, "X Y".split())
+    Lexicon = eliminate_flags(Lexicon, "X Y".split())
     unittest.main()

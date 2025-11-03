@@ -1253,8 +1253,8 @@ class FST:
 
     def eliminate_flags(self) -> 'FST':
         """Equivalent behavior but no flag diacritics."""
-        from ._private.eliminate_flags import eliminate_fst_flags
-        return eliminate_fst_flags(self)
+        from ._private.eliminate_flags import eliminate_flags
+        return eliminate_flags(self)
 
     def add_weight(self, weight) -> 'FST':
         """Add weight to the set of final states in the FST."""
