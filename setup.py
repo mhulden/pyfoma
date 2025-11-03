@@ -40,6 +40,6 @@ setuptools.setup(
 	ext_modules=extensions,
 	python_requires = ">=3.7",
 	install_requires = [
-		"IPython", "graphviz"
+		"IPython", "graphviz", "tqdm"
 	]
 )

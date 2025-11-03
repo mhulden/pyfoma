@@ -96,7 +96,7 @@ def convert_to_otst(fst: FST):
         for transition in new_transitions:
             new_label = (
                 transition.label[0],
-                transition.label[1].removeprefix(common_prefix),
+                transition.label[1][len(common_prefix):],
             )
             transition.label = new_label
             updated_transition_dict[new_label].add(transition)
@@ -173,8 +173,8 @@ def merge(
 def subseq_violations(fst: FST) -> Optional[Tuple[State, Tuple[Transition, Transition]]]:
     """Returns None if the transducer is subsequential, and a tuple of (source state, two edges) that violate the determinism condition if it is not subsequential"""
     for state in fst.states:
-        state._transitionsin = None
-        for _, transitions in state.transitionsin.items():
+        state._transitions_by_input = None
+        for _, transitions in state.transitions_by_input.items():
             if len(transitions) > 1:
                 violating_transitions = list(t[1] for t in transitions)
                 violating_transitions = sorted(
@@ -194,7 +194,7 @@ def push_back(
     """Removes a (output-side) suffix from the incoming edge and
     preprends it to all outgoing edges"""
     old_label = incoming.label
-    new_label = (incoming.label[0], incoming.label[1].removesuffix(suffix))
+    new_label = (incoming.label[0], incoming.label[1][:-len(suffix)])
     incoming.label = new_label
     source.transitions[old_label].remove(incoming)
     source.transitions[new_label].add(incoming)
@@ -317,14 +317,14 @@ def ostia(
             u = lcp([v, w])
             T = push_back(
                 T,
-                suffix=v.removeprefix(u),
+                suffix=v[len(u):],
                 incoming=violating_edges[0],
                 source=source_state,
                 incoming_transition_lookup=incoming_transition_lookup,
             )
             T = push_back(
                 T,
-                suffix=w.removeprefix(u),
+                suffix=w[len(u):],
                 incoming=violating_edges[1],
                 source=source_state,
                 incoming_transition_lookup=incoming_transition_lookup,
