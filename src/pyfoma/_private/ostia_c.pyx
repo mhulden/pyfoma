@@ -41,6 +41,7 @@ cdef class C_FST:
     cdef public dict state_label_to_idx
     cdef public list transition_in_labels
     cdef public list transition_out_labels
+    cdef public object final_state_indices
 
     def __cinit__(self):
         self.states = NULL
@@ -50,6 +51,7 @@ cdef class C_FST:
         self.state_label_to_idx = {}
         self.transition_in_labels = []
         self.transition_out_labels = []
+        self.final_state_indices = set()
 
     def __dealloc__(self):
         if self.states != NULL:
@@ -183,11 +185,13 @@ cdef C_FST build_prefix_tree(list samples: list[tuple[list[str], list[str]]]):
     fst.state_label_to_idx = dict()
     fst.transition_in_labels = []
     fst.transition_out_labels = []
-    for label in fst.state_labels:
+    cdef int idx
+    for idx, label in enumerate(fst.state_labels):
         if len(label) > 0:
             fst.transition_in_labels.append(label[-1])
             if label[-1] == "#":
                 fst.transition_out_labels.append(label_to_outputs[label[:-1]])
+                fst.final_state_indices.add(idx)
             else:
                 fst.transition_out_labels.append("")
         else:
@@ -195,7 +199,6 @@ cdef C_FST build_prefix_tree(list samples: list[tuple[list[str], list[str]]]):
             fst.transition_out_labels.append("")
 
     # 3. Initialize all indices with -1
-    cdef int idx
     for idx in range(fst.n_states):
         fst.states[idx].in_head_idx = -1
         fst.states[idx].out_head_idx = -1
@@ -354,6 +357,8 @@ cdef void merge(C_FST fst, C_State* p, C_State* q):
         transition.source_state_idx = p.idx
         transition.next_out_idx = p.out_head_idx
         p.out_head_idx = transition.idx
+    fst.final_state_indices.remove(q.idx)
+    fst.final_state_indices.add(p.idx)
     q.deleted = True
 
 cdef (C_Transition*, C_Transition*) subsequent_violations(C_FST fst):
@@ -475,7 +480,7 @@ cdef object convert_to_pyfoma(C_FST fst):
         state_label = fst.state_labels[idx]
         s = State(name="".join(state_label))
         states.append(s)
-        if len(state_label) > 0 and state_label[-1] == "#":
+        if idx in fst.final_state_indices:
             finalstates.add(s)
     py_fst = FST(alphabet=alphabet)
     py_fst.states = set([s for s in states if s is not None])
