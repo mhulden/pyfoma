@@ -94,6 +94,7 @@ cpdef ostia(
         for input, output in samples
     ]
     cdef object alphabet = {c for input, output in samples_as_lists for c in input + output}
+    alphabet.add("#")
     cdef C_FST fst = build_prefix_tree(samples_as_lists)
     logger.info(f"Built prefix tree with {fst.n_states} states")
     logger.info("Converting to onward tree sequential transducer")
