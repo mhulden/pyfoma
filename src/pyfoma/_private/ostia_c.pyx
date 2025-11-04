@@ -357,8 +357,9 @@ cdef void merge(C_FST fst, C_State* p, C_State* q):
         transition.source_state_idx = p.idx
         transition.next_out_idx = p.out_head_idx
         p.out_head_idx = transition.idx
-    fst.final_state_indices.remove(q.idx)
-    fst.final_state_indices.add(p.idx)
+    if q.idx in fst.final_state_indices:
+        fst.final_state_indices.remove(q.idx)
+        fst.final_state_indices.add(p.idx)
     q.deleted = True
 
 cdef (C_Transition*, C_Transition*) subsequent_violations(C_FST fst):
