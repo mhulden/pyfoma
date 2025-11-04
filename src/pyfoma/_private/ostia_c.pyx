@@ -1,7 +1,7 @@
 import logging
 from copy import deepcopy
 from collections import defaultdict
-from tqdm import trange
+from tqdm import trange, tqdm
 from pyfoma.atomic import State, Transition
 from pyfoma.fst import FST
 from libc.stdlib cimport malloc, calloc, free
@@ -124,6 +124,8 @@ cpdef ostia(
             F.add(transition.target_state_idx)
             transition_idx = transition.next_out_idx
         # Main loop
+        pbar = tqdm(total=fst.n_states, desc="Merging")
+        pbar.update(1)
         while len(F) > 0:
             # (p, q, score)
             top_scoring: Optional[Tuple[int, int, int]] = None
@@ -143,6 +145,7 @@ cpdef ostia(
                 (p, q, _) = top_scoring
                 did_merge, fst, _ = try_merge(fst, p, q, False)
             for f in to_move_to_C:
+                pbar.update(1)
                 C.add(f)
                 F.remove(f)
                 state = &fst.states[f]
