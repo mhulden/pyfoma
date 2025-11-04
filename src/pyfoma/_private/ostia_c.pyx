@@ -68,6 +68,7 @@ cdef class C_FST:
         new_fst.n_states = self.n_states
         new_fst.state_labels = self.state_labels
         new_fst.state_label_to_idx = self.state_label_to_idx
+        new_fst.final_state_indices = self.final_state_indices
 
         # Mutable Python objects -- deepcopy
         new_fst.transition_in_labels = deepcopy(self.transition_in_labels)
