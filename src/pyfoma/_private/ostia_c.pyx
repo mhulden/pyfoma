@@ -93,6 +93,7 @@ cpdef ostia(
         )
         for input, output in samples
     ]
+    cdef object alphabet = {c for input, output in samples_as_lists for c in input + output}
     cdef C_FST fst = build_prefix_tree(samples_as_lists)
     logger.info(f"Built prefix tree with {fst.n_states} states")
     logger.info("Converting to onward tree sequential transducer")
@@ -154,7 +155,7 @@ cpdef ostia(
         raise ValueError("Unrecognized mode")
 
     # Convert back to PyFoma
-    return convert_to_pyfoma(fst)
+    return convert_to_pyfoma(fst, alphabet)
 
 
 
@@ -469,9 +470,8 @@ cdef void remove_transition(C_FST fst, C_Transition* target_transition):
         previous_transition = transition
 
 
-cdef object convert_to_pyfoma(C_FST fst):
+cdef object convert_to_pyfoma(C_FST fst, object alphabet):
     cdef list states = []
-    alphabet = set("".join(fst.transition_in_labels + fst.transition_out_labels))
     finalstates = set()
     cdef C_State *c_state
     for idx in range(fst.n_states):
