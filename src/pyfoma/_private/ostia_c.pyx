@@ -133,8 +133,8 @@ cpdef ostia(
             for f in F:
                 viable_merge = False
                 for c in C:
-                    _, _, score = try_merge(fst, c, f, True)
-                    if score:
+                    can_merge, fst, score = try_merge(fst, c, f, True)
+                    if can_merge:
                         viable_merge = True
                         if not top_scoring or score > top_scoring[2]:
                             top_scoring = (c, f, score)
