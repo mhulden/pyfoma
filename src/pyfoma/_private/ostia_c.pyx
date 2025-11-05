@@ -9,7 +9,7 @@ from libc.string cimport memcpy
 
 
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format="\033[90m%(asctime)s \033[36m[%(levelname)s] \033[1;33m%(module)s\033[0m: %(message)s",
 )
 logger = logging.getLogger(__name__)
@@ -127,8 +127,6 @@ cpdef ostia(
         pbar = tqdm(total=fst.n_states, desc="Merging")
         pbar.update(1)
         while len(F) > 0:
-            logger.debug("C", C)
-            logger.debug("F", F)
             # (p, q, score)
             top_scoring: Optional[Tuple[int, int, int]] = None
             to_move_to_C = set()
