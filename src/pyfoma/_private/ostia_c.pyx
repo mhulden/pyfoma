@@ -297,7 +297,7 @@ cdef tuple try_merge(C_FST fst, int p_idx, int q_idx, bint dry_run, bint lex_mod
     cdef C_Transition* t1
     cdef C_Transition* t2
     while True:
-        violations = subsequent_violations(fst, p)
+        violations = subsequent_violations(fst, p, set())
         t1, t2 = violations
         if t1 == NULL or t2 == NULL:
             break
@@ -316,7 +316,7 @@ cdef tuple try_merge(C_FST fst, int p_idx, int q_idx, bint dry_run, bint lex_mod
         logger.debug(f"Second-order merge '{fst.state_labels[t2.target_state_idx]}' -> '{fst.state_labels[t1.target_state_idx]}'")
         merge(fst, &fst.states[t1.target_state_idx], &fst.states[t2.target_state_idx])
 
-    t1, t2 = subsequent_violations(fst, p)
+    t1, t2 = subsequent_violations(fst, p, set())
     if dry_run:
         # Always return the copy so we don't mutate
         if t1 == NULL or t2 == NULL:
@@ -372,7 +372,7 @@ cdef void merge(C_FST fst, C_State* p, C_State* q):
         fst.final_state_indices.add(p.idx)
     q.deleted = True
 
-cdef (C_Transition*, C_Transition*) subsequent_violations(C_FST fst, C_State* state, object checked = set()):
+cdef (C_Transition*, C_Transition*) subsequent_violations(C_FST fst, C_State* state, object checked):
     """Identifies any subseqentiality violations and returns two offending edges, or (null, null)"""
     logger.debug(f"subsequent_violations on state={state.idx} with checked={checked}")
     cdef int transition_idx
