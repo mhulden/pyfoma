@@ -325,7 +325,7 @@ cdef bint merge(C_FST fst, C_State* p, C_State* q, bint lex_mode):
     # We also know it won't already exist for p because of how the tree is constructed
     cdef int transition_idx = q.in_head_idx
     cdef C_Transition *transition
-    logger.debug(f"Reassigning incoming to state {q.idx} to {p.idx}")
+    logger.debug(f"Reassigning incoming from state {q.idx} to {p.idx}")
     while transition_idx != -1:
         transition = &fst.transitions[transition_idx]
         transition_idx = transition.next_in_idx
@@ -388,7 +388,10 @@ cdef bint fold(C_FST fst, C_State* p, C_State* q, bint lex_mode):
             if lex_mode and q_transition.target_state_idx < p_transition.target_state_idx:
                 s = q_transition.target_state_idx
                 t = p_transition.target_state_idx
+                # We also need to relink this transition since the state is changing
                 p_transition.target_state_idx = s
+                p_transition.next_in_idx = &fst.states[s].in_head_idx
+                &fst.states[s].in_head_idx = p_transition.idx
             else:
                 s = p_transition.target_state_idx
                 t = q_transition.target_state_idx
