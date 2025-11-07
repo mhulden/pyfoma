@@ -389,6 +389,7 @@ cdef bint fold(C_FST fst, C_State* p, C_State* q, bint lex_mode):
             if lex_mode and q_transition.target_state_idx < p_transition.target_state_idx:
                 s = q_transition.target_state_idx
                 t = p_transition.target_state_idx
+                p_transition.target_state_idx = s
             else:
                 s = p_transition.target_state_idx
                 t = q_transition.target_state_idx
