@@ -297,7 +297,7 @@ cdef tuple try_merge(C_FST fst, int p_idx, int q_idx, bint dry_run, bint lex_mod
     cdef C_Transition* t1
     cdef C_Transition* t2
     while True:
-        violations = subsequent_violations(fst)
+        violations = subsequent_violations(fst, p)
         t1, t2 = violations
         if t1 == NULL or t2 == NULL:
             break
@@ -316,7 +316,7 @@ cdef tuple try_merge(C_FST fst, int p_idx, int q_idx, bint dry_run, bint lex_mod
         logger.debug(f"Second-order merge '{fst.state_labels[t2.target_state_idx]}' -> '{fst.state_labels[t1.target_state_idx]}'")
         merge(fst, &fst.states[t1.target_state_idx], &fst.states[t2.target_state_idx])
 
-    t1, t2 = subsequent_violations(fst)
+    t1, t2 = subsequent_violations(fst, p)
     if dry_run:
         # Always return the copy so we don't mutate
         if t1 == NULL or t2 == NULL:
@@ -372,31 +372,34 @@ cdef void merge(C_FST fst, C_State* p, C_State* q):
         fst.final_state_indices.add(p.idx)
     q.deleted = True
 
-cdef (C_Transition*, C_Transition*) subsequent_violations(C_FST fst):
+cdef (C_Transition*, C_Transition*) subsequent_violations(C_FST fst, C_State* state):
     """Identifies any subseqentiality violations and returns two offending edges, or (null, null)"""
-    cdef C_State* state
     cdef int transition_idx
-    cdef C_Transition* transition
-    cdef C_Transition* conflicting_transition
-    cdef dict input_to_transition_idx
+    cdef C_Transition *transition
+    cdef C_Transition *conflicting_transition1, *conflicting_transition2
     cdef str input_string, output_string
-    for state_idx in range(fst.n_states):
-        state = &fst.states[state_idx]
-        if state.deleted:
-            continue
-        input_to_transition_idx = dict() # Keep dict of transitions for a given input, which should only be one unless violation
-        transition_idx = state.out_head_idx
-        while transition_idx != -1:
-            transition = &fst.transitions[transition_idx]
-            input_string = fst.transition_in_labels[transition_idx]
-            if input_string in input_to_transition_idx:
-                conflicting_transition = &fst.transitions[input_to_transition_idx[input_string]]
-                if fst.state_labels[transition.target_state_idx] < fst.state_labels[conflicting_transition.target_state_idx]:
-                    return transition, conflicting_transition
-                else:
-                    return conflicting_transition, transition
-            input_to_transition_idx[input_string] = transition.idx
-            transition_idx = transition.next_out_idx
+    if state.deleted:
+        return NULL, NULL
+    cdef dict input_to_transition_idx = dict() # Keep dict of transitions for a given input, which should only be one unless violation
+    transition_idx = state.out_head_idx
+    while transition_idx != -1:
+        transition = &fst.transitions[transition_idx]
+        input_string = fst.transition_in_labels[transition_idx]
+        if input_string in input_to_transition_idx:
+            conflicting_transition1 = &fst.transitions[input_to_transition_idx[input_string]]
+            if fst.state_labels[transition.target_state_idx] < fst.state_labels[conflicting_transition1.target_state_idx]:
+                return transition, conflicting_transition1
+            else:
+                return conflicting_transition1, transition
+        input_to_transition_idx[input_string] = transition.idx
+        transition_idx = transition.next_out_idx
+    # Recursively process
+    transition_idx = state.out_head_idx
+    while transition_idx != -1:
+        transition = &fst.transitions[transition_idx]
+        conflicting_transition1, conflicting_transition2 = subsequent_violations(fst, &fst.states[transition.target_state_idx])
+        if conflicting_transition1 != NULL and conflicting_transition2 != NULL:
+            return conflicting_transition1, conflicting_transition2
     return NULL, NULL
 
 
