@@ -374,7 +374,7 @@ cdef void merge(C_FST fst, C_State* p, C_State* q):
 
 cdef (C_Transition*, C_Transition*) subsequent_violations(C_FST fst, C_State* state, object checked = set()):
     """Identifies any subseqentiality violations and returns two offending edges, or (null, null)"""
-    logger.debug(f"subsequent_violations on state={state.idx}")
+    logger.debug(f"subsequent_violations on state={state.idx} with checked={checked}")
     cdef int transition_idx
     cdef C_Transition *transition
     cdef C_Transition *confl_trans_1, *confl_trans_2
