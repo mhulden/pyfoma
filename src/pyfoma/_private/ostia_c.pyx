@@ -109,7 +109,7 @@ cpdef ostia(
         for q_index in trange(fst.n_states, desc="Merging"):
             # Find p < q where q can merge into p
             for p_index in range(q_index):
-                did_merge, fst, _ = try_merge(fst, p_index, q_index, False)
+                did_merge, fst, _ = try_merge(fst, p_index, q_index, False, True)
                 if did_merge:
                     break
     elif mode == Mode.data_driven:
@@ -133,7 +133,7 @@ cpdef ostia(
             for f in F:
                 viable_merge = False
                 for c in C:
-                    can_merge, fst, score = try_merge(fst, c, f, True)
+                    can_merge, fst, score = try_merge(fst, c, f, True, False)
                     if can_merge:
                         viable_merge = True
                         if not top_scoring or score > top_scoring[2]:
@@ -143,7 +143,7 @@ cpdef ostia(
                     to_move_to_C.add(f)
             if top_scoring:
                 (p, q, _) = top_scoring
-                did_merge, fst, _ = try_merge(fst, p, q, False)
+                did_merge, fst, _ = try_merge(fst, p, q, False, False)
             for f in to_move_to_C:
                 pbar.update(1)
                 C.add(f)
@@ -273,10 +273,11 @@ cdef inline str _otst_process_state(C_State* state, C_FST fst):
     return common_prefix
 
 
-cdef tuple try_merge(C_FST fst, int p_idx, int q_idx, bint dry_run):
+cdef tuple try_merge(C_FST fst, int p_idx, int q_idx, bint dry_run, bint lex_mode):
     """Attempts a merge q->p.
 
     If `dry_run==True`, the merge will not actually be performed, but the equivalence score (an integer) will be returned.
+    If `lex_mode==True`, the merges are assumed to be performed in lexicographic order.
 
     Returns:
         (can_merge: bool, C_FST, score: int | None)
@@ -304,7 +305,7 @@ cdef tuple try_merge(C_FST fst, int p_idx, int q_idx, bint dry_run):
         v = fst.transition_out_labels[t1.idx]
         w = fst.transition_out_labels[t2.idx]
         prefixes = ["".join(s) for s in prefix(list(w))]
-        if (v != w and a == "#") or (t1.target_state_idx < q_idx and v not in prefixes):
+        if (v != w and a == "#") or ((not lex_mode or t1.target_state_idx < q_idx) and v not in prefixes):
             break
         u = lcp([v, w])
         push_back(fst, v[len(u):], t1)
