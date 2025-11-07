@@ -110,7 +110,6 @@ cpdef ostia(
             # Find p < q where q can merge into p
             for p_index in range(q_index):
                 did_merge, fst, _ = try_merge(fst, p_index, q_index, False, True)
-                logger.debug(f"{did_merge=}")
                 if did_merge:
                     break
     elif mode == Mode.data_driven:
@@ -286,7 +285,6 @@ cdef tuple try_merge(C_FST fst, int p_idx, int q_idx, bint dry_run, bint lex_mod
     cdef C_State* p = &fst.states[p_idx]
     cdef C_State* q = &fst.states[q_idx]
     if p.deleted or q.deleted:
-        logger.debug(f"{p.deleted=}, {q.deleted=}")
         return (False, fst, None)
 
     cdef int initial_output_sym_count
