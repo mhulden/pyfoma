@@ -339,6 +339,7 @@ cdef bint merge(C_FST fst, C_State* p, C_State* q, bint lex_mode):
 
 cdef bint fold(C_FST fst, C_State* p, C_State* q, bint lex_mode):
     """Recursively fold q subtree into p"""
+    logger.info(f"Folding {q.idx=} into {p.idx=}")
     # Designate final state if necessary
     if q.idx in fst.final_state_indices:
         fst.final_state_indices.remove(q.idx)
@@ -380,6 +381,7 @@ cdef bint fold(C_FST fst, C_State* p, C_State* q, bint lex_mode):
                 if p_trans_out not in q_out_prefixes:
                     return False
 
+            logger.info(f"Recursively folding {q_transition.target_state_idx} into {p_transition.target_state_idx}.")
             shared_prefix = lcp([p_trans_out, q_trans_out])
             push_back(fst, p_trans_out[len(shared_prefix):], p_transition)
             push_back(fst, q_trans_out[len(shared_prefix):], q_transition)
