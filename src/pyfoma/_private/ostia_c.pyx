@@ -301,6 +301,9 @@ cdef tuple try_merge(C_FST fst, int p_idx, int q_idx, bint dry_run, bint lex_mod
         t1, t2 = violations
         if t1 == NULL or t2 == NULL:
             break
+        if t1.target_state_idx == t2.target_state_idx:
+            # Two conflicting transitions to same state
+            break
         a = fst.transition_in_labels[t1.idx]
         v = fst.transition_out_labels[t1.idx]
         w = fst.transition_out_labels[t2.idx]
