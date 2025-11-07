@@ -305,7 +305,7 @@ cdef tuple try_merge(C_FST fst, int p_idx, int q_idx, bint dry_run, bint lex_mod
     else:
         if success:
             logger.debug("Merged successfully")
-            return fst
+            return (success, fst, None)
         else:
             logger.debug("Bad merge, reverting")
             return (success, T_bar, None)
