@@ -390,8 +390,8 @@ cdef bint fold(C_FST fst, C_State* p, C_State* q, bint lex_mode):
                 t = p_transition.target_state_idx
                 # We also need to relink this transition since the state is changing
                 p_transition.target_state_idx = s
-                p_transition.next_in_idx = &fst.states[s].in_head_idx
-                &fst.states[s].in_head_idx = p_transition.idx
+                p_transition.next_in_idx = (&fst.states[s]).in_head_idx
+                (&fst.states[s]).in_head_idx = p_transition.idx
             else:
                 s = p_transition.target_state_idx
                 t = q_transition.target_state_idx
