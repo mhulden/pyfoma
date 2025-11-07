@@ -411,7 +411,7 @@ cdef bint fold(C_FST fst, C_State* p, C_State* q, bint lex_mode):
             p.out_head_idx = q_transition.idx
             logger.debug(f"Updated transition {q_transition.idx} to come from p")
 
-    logger.info(f"Deleting state {q.idx}")
+    logger.debug(f"Deleting state {q.idx}")
     q.deleted = True
     return True
 
