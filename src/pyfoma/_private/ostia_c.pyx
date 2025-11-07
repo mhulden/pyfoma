@@ -345,7 +345,7 @@ cdef bint fold(C_FST fst, C_State* p, C_State* q, bint lex_mode):
 
     # Change outgoing
     cdef bint p_has_edge, submerge_succeeded
-    cdef int p_transition_idx, q_transition_idx
+    cdef int p_transition_idx, q_transition_idx, s_idx, t_idx
     cdef C_Transition *p_transition, *q_transition
     cdef str p_trans_out, q_trans_out, p_trans_in, shared_prefix
     for q_transition_idx in range(fst.n_states):
@@ -382,12 +382,18 @@ cdef bint fold(C_FST fst, C_State* p, C_State* q, bint lex_mode):
                 if p_trans_out not in q_out_prefixes:
                     return False
 
-
-            logger.debug(f"Recursively folding {q_transition.target_state_idx} into {p_transition.target_state_idx}.")
             shared_prefix = lcp([p_trans_out, q_trans_out])
             push_back(fst, p_trans_out[len(shared_prefix):], p_transition)
             push_back(fst, q_trans_out[len(shared_prefix):], q_transition)
-            submerge_succeeded = fold(fst, &fst.states[p_transition.target_state_idx], &fst.states[q_transition.target_state_idx], lex_mode)
+
+            if lex_mode and q_transition.target_state_idx < p_transition.target_state_idx:
+                s = q_transition.target_state_idx
+                t = p_transition.target_state_idx
+            else:
+                s = p_transition.target_state_idx
+                t = q_transition.target_state_idx
+            logger.debug(f"Recursively folding {t} into {s}.")
+            submerge_succeeded = fold(fst, &fst.states[s], &fst.states[t], lex_mode)
             if not submerge_succeeded:
                 return False
             break
