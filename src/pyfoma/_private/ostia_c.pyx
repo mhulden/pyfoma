@@ -361,6 +361,7 @@ cdef bint fold(C_FST fst, C_State* p, C_State* q, bint lex_mode):
             p_trans_in = fst.transition_in_labels[p_transition.idx]
             if p_transition.source_state_idx != p.idx or p_trans_in != fst.transition_in_labels[q_transition.idx]:
                 continue
+            logger.debug(f"Conflicting transitions {p_transition_idx=} and {q_transition_idx=}")
             # Only run for matching input
             p_has_edge = True
 
@@ -381,7 +382,8 @@ cdef bint fold(C_FST fst, C_State* p, C_State* q, bint lex_mode):
                 if p_trans_out not in q_out_prefixes:
                     return False
 
-            logger.info(f"Recursively folding {q_transition.target_state_idx} into {p_transition.target_state_idx}.")
+
+            logger.debug(f"Recursively folding {q_transition.target_state_idx} into {p_transition.target_state_idx}.")
             shared_prefix = lcp([p_trans_out, q_trans_out])
             push_back(fst, p_trans_out[len(shared_prefix):], p_transition)
             push_back(fst, q_trans_out[len(shared_prefix):], q_transition)
@@ -392,11 +394,13 @@ cdef bint fold(C_FST fst, C_State* p, C_State* q, bint lex_mode):
         if p_has_edge:
             # We should have merged the two by now
             remove_transition(fst, q_transition)
+            logger.debug(f"Removed transition {q_transition.idx}")
         else:
             # Update the new edge to come from p
             q_transition.source_state_idx = p.idx
             q_transition.next_out_idx = p.out_head_idx
             p.out_head_idx = q_transition.idx
+            logger.debug(f"Updated transition {q_transition.idx} to come from p")
 
     q.deleted = True
     return True
