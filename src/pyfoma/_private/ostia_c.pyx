@@ -388,6 +388,7 @@ cdef bint fold(C_FST fst, C_State* p, C_State* q, bint lex_mode):
             submerge_succeeded = fold(fst, &fst.states[p_transition.target_state_idx], &fst.states[q_transition.target_state_idx], lex_mode)
             if not submerge_succeeded:
                 return False
+            break
         if p_has_edge:
             # We should have merged the two by now
             remove_transition(fst, q_transition)
