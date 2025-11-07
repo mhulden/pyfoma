@@ -504,7 +504,7 @@ cdef object convert_to_pyfoma(C_FST fst, object alphabet):
         while transition_idx != -1:
             transition = &fst.transitions[transition_idx]
             if states[transition.target_state_idx] == None:
-                raise ValueError(f"{transition.idx=}")
+                raise ValueError(f"{transition.idx=}, {transition.target_state_idx}")
             states[idx].add_transition(
                 states[transition.target_state_idx],
                 label=(fst.transition_in_labels[transition_idx], fst.transition_out_labels[transition_idx]),
