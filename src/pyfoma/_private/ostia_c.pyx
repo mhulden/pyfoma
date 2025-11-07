@@ -286,6 +286,7 @@ cdef tuple try_merge(C_FST fst, int p_idx, int q_idx, bint dry_run, bint lex_mod
     cdef C_State* p = &fst.states[p_idx]
     cdef C_State* q = &fst.states[q_idx]
     if p.deleted or q.deleted:
+        logger.debug("{p.deleted=}, {q.deleted=}")
         return (False, fst, None)
 
     cdef int initial_output_sym_count
