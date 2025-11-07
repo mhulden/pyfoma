@@ -440,7 +440,7 @@ cdef void remove_transition(C_FST fst, C_Transition* target_transition):
         previous_transition = transition
 
     # Same for incoming
-    state = &fst.states[transition.target_state_idx]
+    state = &fst.states[target_transition.target_state_idx]
     transition_idx = state.in_head_idx
     previous_transition = NULL
     while transition_idx != -1:
