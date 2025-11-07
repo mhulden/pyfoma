@@ -374,6 +374,7 @@ cdef void merge(C_FST fst, C_State* p, C_State* q):
 
 cdef (C_Transition*, C_Transition*) subsequent_violations(C_FST fst, C_State* state):
     """Identifies any subseqentiality violations and returns two offending edges, or (null, null)"""
+    logger.debug(f"subsequent_violations on state={state.idx}")
     cdef int transition_idx
     cdef C_Transition *transition
     cdef C_Transition *conflicting_transition1, *conflicting_transition2
