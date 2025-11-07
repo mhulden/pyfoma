@@ -402,6 +402,7 @@ cdef (C_Transition*, C_Transition*) subsequent_violations(C_FST fst, C_State* st
         confl_trans_1, confl_trans_2 = subsequent_violations(fst, &fst.states[transition.target_state_idx], checked | {state.idx})
         if confl_trans_1 != NULL and confl_trans_2 != NULL:
             return confl_trans_1, confl_trans_2
+        transition_idx = transition.next_out_idx
     return NULL, NULL
 
 
