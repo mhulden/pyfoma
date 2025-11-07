@@ -372,14 +372,14 @@ cdef void merge(C_FST fst, C_State* p, C_State* q):
         fst.final_state_indices.add(p.idx)
     q.deleted = True
 
-cdef (C_Transition*, C_Transition*) subsequent_violations(C_FST fst, C_State* state):
+cdef (C_Transition*, C_Transition*) subsequent_violations(C_FST fst, C_State* state, object checked = set()):
     """Identifies any subseqentiality violations and returns two offending edges, or (null, null)"""
     logger.debug(f"subsequent_violations on state={state.idx}")
     cdef int transition_idx
     cdef C_Transition *transition
-    cdef C_Transition *conflicting_transition1, *conflicting_transition2
+    cdef C_Transition *confl_trans_1, *confl_trans_2
     cdef str input_string, output_string
-    if state.deleted:
+    if state.deleted or state.idx in checked:
         return NULL, NULL
     cdef dict input_to_transition_idx = dict() # Keep dict of transitions for a given input, which should only be one unless violation
     transition_idx = state.out_head_idx
@@ -387,20 +387,20 @@ cdef (C_Transition*, C_Transition*) subsequent_violations(C_FST fst, C_State* st
         transition = &fst.transitions[transition_idx]
         input_string = fst.transition_in_labels[transition_idx]
         if input_string in input_to_transition_idx:
-            conflicting_transition1 = &fst.transitions[input_to_transition_idx[input_string]]
-            if fst.state_labels[transition.target_state_idx] < fst.state_labels[conflicting_transition1.target_state_idx]:
-                return transition, conflicting_transition1
+            confl_trans_1 = &fst.transitions[input_to_transition_idx[input_string]]
+            if fst.state_labels[transition.target_state_idx] < fst.state_labels[confl_trans_1.target_state_idx]:
+                return transition, confl_trans_1
             else:
-                return conflicting_transition1, transition
+                return confl_trans_1, transition
         input_to_transition_idx[input_string] = transition.idx
         transition_idx = transition.next_out_idx
     # Recursively process
     transition_idx = state.out_head_idx
     while transition_idx != -1:
         transition = &fst.transitions[transition_idx]
-        conflicting_transition1, conflicting_transition2 = subsequent_violations(fst, &fst.states[transition.target_state_idx])
-        if conflicting_transition1 != NULL and conflicting_transition2 != NULL:
-            return conflicting_transition1, conflicting_transition2
+        confl_trans_1, confl_trans_2 = subsequent_violations(fst, &fst.states[transition.target_state_idx], checked | {state.idx})
+        if confl_trans_1 != NULL and confl_trans_2 != NULL:
+            return confl_trans_1, confl_trans_2
     return NULL, NULL
 
 
