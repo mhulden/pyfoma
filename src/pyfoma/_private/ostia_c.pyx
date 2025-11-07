@@ -9,7 +9,7 @@ from libc.string cimport memcpy
 
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format="\033[90m%(asctime)s \033[36m[%(levelname)s] \033[1;33m%(module)s\033[0m: %(message)s",
 )
 logger = logging.getLogger(__name__)
@@ -293,44 +293,22 @@ cdef tuple try_merge(C_FST fst, int p_idx, int q_idx, bint dry_run, bint lex_mod
     cdef C_FST T_bar = fst.clone()
 
     logger.debug(f"Trying merge '{fst.state_labels[q_idx]}' -> '{fst.state_labels[p_idx]}'")
-    merge(fst, p, q)
-    cdef C_Transition* t1
-    cdef C_Transition* t2
-    while True:
-        violations = subsequent_violations(fst, p, set())
-        t1, t2 = violations
-        if t1 == NULL or t2 == NULL:
-            break
-        if t1.target_state_idx == t2.target_state_idx:
-            # Two conflicting transitions to same state
-            break
-        a = fst.transition_in_labels[t1.idx]
-        v = fst.transition_out_labels[t1.idx]
-        w = fst.transition_out_labels[t2.idx]
-        prefixes = ["".join(s) for s in prefix(list(w))]
-        if (v != w and a == "#") or ((not lex_mode or t1.target_state_idx < q_idx) and v not in prefixes):
-            break
-        u = lcp([v, w])
-        push_back(fst, v[len(u):], t1)
-        push_back(fst, w[len(u):], t2)
-        logger.debug(f"Second-order merge '{fst.state_labels[t2.target_state_idx]}' -> '{fst.state_labels[t1.target_state_idx]}'")
-        merge(fst, &fst.states[t1.target_state_idx], &fst.states[t2.target_state_idx])
+    cdef bint success = merge(fst, p, q, lex_mode)
 
-    t1, t2 = subsequent_violations(fst, p, set())
     if dry_run:
         # Always return the copy so we don't mutate
-        if t1 == NULL or t2 == NULL:
+        if success:
             score = initial_output_sym_count - count_output_symbols(fst)
-            return (True, T_bar, score)
         else:
-            return (False, T_bar, None)
+            score = None
+        return (success, T_bar, score)
     else:
-        if t1 == NULL or t2 == NULL:
+        if success:
             logger.debug("Merged successfully")
-            return (True, fst, None)
         else:
             logger.debug("Bad merge, reverting")
-            return (False, T_bar, None)
+            fst = T_bar
+        return (success, fst, None)
 
 
 cdef int count_output_symbols(C_FST fst):
@@ -341,69 +319,134 @@ cdef int count_output_symbols(C_FST fst):
     return total
 
 
-cdef void merge(C_FST fst, C_State* p, C_State* q):
-    # All incoming to q should now go to p
+cdef bint merge(C_FST fst, C_State* p, C_State* q, bint lex_mode):
+    # Incoming to q should now go to p
+    # There is only ever one per input, in either variant of OSTIA (because q states have not been merged into yet)
+    # We also know it won't already exist for p because of how the tree is constructed
     cdef int transition_idx = q.in_head_idx
     cdef C_Transition *transition
     while transition_idx != -1:
         transition = &fst.transitions[transition_idx]
         transition_idx = transition.next_in_idx
-        if check_for_dupe(fst, transition.source_state_idx, p.idx, fst.transition_in_labels[transition.idx], fst.transition_out_labels[transition.idx]):
-            remove_transition(fst, transition)
-            continue
         transition.target_state_idx = p.idx
         # Add to head of LL for p
         transition.next_in_idx = p.in_head_idx
         p.in_head_idx = transition.idx
+    return fold(fst, p, q, lex_mode)
 
-    # All outgoing from q should now come from p
-    transition_idx = q.out_head_idx
-    while transition_idx != -1:
-        transition = &fst.transitions[transition_idx]
-        transition_idx = transition.next_out_idx
-        if check_for_dupe(fst, p.idx, transition.target_state_idx, fst.transition_in_labels[transition.idx], fst.transition_out_labels[transition.idx]):
-            remove_transition(fst, transition)
-            continue
-        transition.source_state_idx = p.idx
-        transition.next_out_idx = p.out_head_idx
-        p.out_head_idx = transition.idx
+
+cdef bint fold(C_FST fst, C_State* p, C_State* q, bint lex_mode):
+    """Recursively fold q subtree into p"""
+    # Designate final state if necessary
     if q.idx in fst.final_state_indices:
         fst.final_state_indices.remove(q.idx)
         fst.final_state_indices.add(p.idx)
-    q.deleted = True
 
-cdef (C_Transition*, C_Transition*) subsequent_violations(C_FST fst, C_State* state, object checked):
-    """Identifies any subseqentiality violations and returns two offending edges, or (null, null)"""
-    # logger.debug(f"subsequent_violations on state={state.idx} with checked={checked}")
-    cdef int transition_idx
-    cdef C_Transition *transition
-    cdef C_Transition *confl_trans_1, *confl_trans_2
-    cdef str input_string, output_string
-    if state.deleted or state.idx in checked:
-        return NULL, NULL
-    cdef dict input_to_transition_idx = dict() # Keep dict of transitions for a given input, which should only be one unless violation
-    transition_idx = state.out_head_idx
-    while transition_idx != -1:
-        transition = &fst.transitions[transition_idx]
-        input_string = fst.transition_in_labels[transition_idx]
-        if input_string in input_to_transition_idx:
-            confl_trans_1 = &fst.transitions[input_to_transition_idx[input_string]]
-            if fst.state_labels[transition.target_state_idx] < fst.state_labels[confl_trans_1.target_state_idx]:
-                return transition, confl_trans_1
+    # Change outgoing
+    cdef bint p_has_edge, submerge_succeeded
+    cdef int p_transition_idx, q_transition_idx
+    cdef C_Transition *p_transition, *q_transition
+    cdef str p_trans_out, q_trans_out, p_trans_in, shared_prefix
+    for q_transition_idx in range(fst.n_states):
+        q_transition = &fst.transitions[q_transition_idx]
+        if q_transition.source_state_idx != q.idx:
+            continue
+        # Check existing p outs
+        p_has_edge = False
+        for p_transition_idx in range(fst.n_states):
+            p_transition = &fst.transitions[p_transition_idx]
+            p_trans_in = fst.transition_in_labels[p_transition.idx]
+            if p_transition.source_state_idx != p.idx or p_trans_in != fst.transition_in_labels[q_transition.idx]:
+                continue
+            # Only run for matching input
+            p_has_edge = True
+
+            p_trans_out = fst.transition_out_labels[p_transition.idx]
+            q_trans_out = fst.transition_out_labels[q_transition.idx]
+            q_out_prefixes = ["".join(s) for s in prefix(list(q_trans_out))]
+            # We've reached the end and can't resolve
+            if p_trans_in == "#" and p_trans_out != q_trans_out:
+                return False
+
+            # Check if outputs are compatible
+            if lex_mode:
+                # For lex mode, target 1 > q means we're good to push back automatically
+                if p_transition.target_state_idx < q.idx and p_trans_out not in q_out_prefixes:
+                    return False
             else:
-                return confl_trans_1, transition
-        input_to_transition_idx[input_string] = transition.idx
-        transition_idx = transition.next_out_idx
-    # Recursively process
-    transition_idx = state.out_head_idx
-    while transition_idx != -1:
-        transition = &fst.transitions[transition_idx]
-        # logger.debug(f"Running recursively on state {transition.target_state_idx}")
-        confl_trans_1, confl_trans_2 = subsequent_violations(fst, &fst.states[transition.target_state_idx], checked | {state.idx})
-        if confl_trans_1 != NULL and confl_trans_2 != NULL:
-            return confl_trans_1, confl_trans_2
-        transition_idx = transition.next_out_idx
-    return NULL, NULL
+                # dd mode
+                if p_trans_out not in q_out_prefixes:
+                    return False
+
+            shared_prefix = lcp([p_trans_out, q_trans_out])
+            push_back(fst, p_trans_out[len(shared_prefix):], p_transition)
+            push_back(fst, q_trans_out[len(shared_prefix):], q_transition)
+            submerge_succeeded = fold(fst, &fst.states[p_transition.target_state_idx], &fst.states[q_transition.target_state_idx], lex_mode)
+            if not submerge_succeeded:
+                return False
+        if p_has_edge:
+            # We should have merged the two by now
+            remove_transition(fst, q_transition)
+        else:
+            # Update the new edge to come from p
+            q_transition.source_state_idx = p.idx
+            q_transition.next_out_idx = p.out_head_idx
+            p.out_head_idx = q_transition.idx
+
+    q.deleted = True
+    return True
+
+    # while transition_idx != -1:
+    #     transition = &fst.transitions[transition_idx]
+    #     transition_idx = transition.next_out_idx
+
+    #     # Exact dupe
+    #     if check_for_dupe(fst, p.idx, transition.target_state_idx, fst.transition_in_labels[transition.idx], fst.transition_out_labels[transition.idx]):
+    #         remove_transition(fst, transition)
+    #         continue
+
+    #     # Unresolvable conflict
+    #     if
+
+    #     transition.source_state_idx = p.idx
+    #     transition.next_out_idx = p.out_head_idx
+    #     p.out_head_idx = transition.idx
+
+    # return True
+
+
+# cdef (C_Transition*, C_Transition*) subsequent_violations(C_FST fst, C_State* state, object checked):
+#     """Identifies any subseqentiality violations and returns two offending edges, or (null, null)"""
+#     # logger.debug(f"subsequent_violations on state={state.idx} with checked={checked}")
+#     cdef int transition_idx
+#     cdef C_Transition *transition
+#     cdef C_Transition *confl_trans_1, *confl_trans_2
+#     cdef str input_string, output_string
+#     if state.deleted or state.idx in checked:
+#         return NULL, NULL
+#     cdef dict input_to_transition_idx = dict() # Keep dict of transitions for a given input, which should only be one unless violation
+#     transition_idx = state.out_head_idx
+#     while transition_idx != -1:
+#         transition = &fst.transitions[transition_idx]
+#         input_string = fst.transition_in_labels[transition_idx]
+#         if input_string in input_to_transition_idx:
+#             confl_trans_1 = &fst.transitions[input_to_transition_idx[input_string]]
+#             if fst.state_labels[transition.target_state_idx] < fst.state_labels[confl_trans_1.target_state_idx]:
+#                 return transition, confl_trans_1
+#             else:
+#                 return confl_trans_1, transition
+#         input_to_transition_idx[input_string] = transition.idx
+#         transition_idx = transition.next_out_idx
+#     # Recursively process
+#     transition_idx = state.out_head_idx
+#     while transition_idx != -1:
+#         transition = &fst.transitions[transition_idx]
+#         # logger.debug(f"Running recursively on state {transition.target_state_idx}")
+#         confl_trans_1, confl_trans_2 = subsequent_violations(fst, &fst.states[transition.target_state_idx], checked | {state.idx})
+#         if confl_trans_1 != NULL and confl_trans_2 != NULL:
+#             return confl_trans_1, confl_trans_2
+#         transition_idx = transition.next_out_idx
+#     return NULL, NULL
 
 
 cdef void push_back(C_FST fst, str suffix, C_Transition* incoming):
@@ -413,11 +456,7 @@ cdef void push_back(C_FST fst, str suffix, C_Transition* incoming):
         return
     # Remove suffix from incoming edge
     cdef str new_label = fst.transition_out_labels[incoming.idx][:-len(suffix)]
-    # Check if this modified transition would be a duplicate. If so, remove it.
-    if check_for_dupe(fst, incoming.source_state_idx, incoming.target_state_idx, fst.transition_in_labels[incoming.idx], new_label):
-        remove_transition(fst, incoming)
-    else:
-        fst.transition_out_labels[incoming.idx] = new_label
+    fst.transition_out_labels[incoming.idx] = new_label
 
     # Prepend suffix to outgoing edges
     cdef C_State* state = &fst.states[incoming.target_state_idx]
@@ -432,19 +471,19 @@ cdef void push_back(C_FST fst, str suffix, C_Transition* incoming):
         outgoing_transition_idx = outgoing_transition.next_out_idx
 
 
-cdef bint check_for_dupe(C_FST fst, int source_state_idx, int target_state_idx, str in_label, str out_label):
-    """Returns True if an identical transition already exists"""
-    cdef C_State* state = &fst.states[source_state_idx]
-    cdef int transition_idx = state.out_head_idx
-    cdef C_Transition* transition
-    while transition_idx != -1:
-        transition = &fst.transitions[transition_idx]
-        if (fst.transition_in_labels[transition_idx] == in_label and
-            fst.transition_out_labels[transition_idx] == out_label and
-            transition.target_state_idx == target_state_idx):
-            return True
-        transition_idx = transition.next_out_idx
-    return False
+# cdef bint check_for_dupe(C_FST fst, int source_state_idx, int target_state_idx, str in_label, str out_label):
+#     """Returns True if an identical transition already exists"""
+#     cdef C_State* state = &fst.states[source_state_idx]
+#     cdef int transition_idx = state.out_head_idx
+#     cdef C_Transition* transition
+#     while transition_idx != -1:
+#         transition = &fst.transitions[transition_idx]
+#         if (fst.transition_in_labels[transition_idx] == in_label and
+#             fst.transition_out_labels[transition_idx] == out_label and
+#             transition.target_state_idx == target_state_idx):
+#             return True
+#         transition_idx = transition.next_out_idx
+#     return False
 
 
 cdef void remove_transition(C_FST fst, C_Transition* target_transition):
@@ -482,6 +521,8 @@ cdef void remove_transition(C_FST fst, C_Transition* target_transition):
             break
         transition_idx = transition.next_in_idx
         previous_transition = transition
+    target_transition.source_state_idx = -1
+    target_transition.target_state_idx = -1
 
 
 cdef object convert_to_pyfoma(C_FST fst, object alphabet):
