@@ -7,11 +7,11 @@ import pickle
 import functools
 import gzip
 
-from pyfoma import atomic
-from pyfoma.flag import FlagStringFilter, FlagOp
-from pyfoma.atomic import State, Transition, all_transitions
-from pyfoma._private import util, algorithms, partition_refinement
-from pyfoma._private.exceptions import NoFinalStatesException
+from . import atomic, algorithms
+from .flag import FlagStringFilter, FlagOp
+from .atomic import State, Transition, all_transitions
+from ._private import util, partition_refinement
+from ._private.exceptions import NoFinalStatesException
 
 
 def harmonize_alphabet(func):

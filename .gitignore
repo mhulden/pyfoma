@@ -46,3 +46,7 @@ Demo
 .venv
 .vscode
 .zed
+
+# Cython
+*.c
+*.html

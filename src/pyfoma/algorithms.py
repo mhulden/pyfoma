@@ -4,12 +4,12 @@
 import heapq
 import itertools
 from collections import deque
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, List, Literal, Tuple, Union
 
 from pyfoma._private.exceptions import NoFinalStatesException
 
 if TYPE_CHECKING:
-    from ..fst import FST
+    from .fst import FST
 
 
 def scc(fst: 'FST') -> set:
@@ -93,3 +93,22 @@ def best_word(fst: 'FST') -> List:
             if (target_state := cheapest_transition.targetstate) not in explored:
                 heapq.heappush(Q, (cheapest_transition.weight + w, next(cntr), target_state, seq + [label]))
     return []
+
+def ostia(samples: List[Tuple[Union[str, List[str]], Union[str, List[str]]]], merging_order: Literal["lex", "dd"], use_cython=True) -> 'FST':
+    """Runs the [OSTIA](https://www.jeffreyheinz.net/classes/24F/655/materials/Oncina-et-al-1993-OSTIA.pdf) algorithm to infer an FST from a dataset.
+
+    Args:
+        samples: A list of paired input/output strings, where each string is a `list[str]` or `str`.
+    """
+    if use_cython:
+        from ._private.ostia import ostia as _ostia, Mode
+        if merging_order == 'lex':
+            mode = Mode.lexicographic
+        elif merging_order == 'dd':
+            mode = Mode.data_driven
+        else:
+            raise ValueError()
+        return _ostia(samples, mode)
+    else:
+        from ._private.ostia_py import ostia as _ostia
+        return _ostia(samples, merging_order)

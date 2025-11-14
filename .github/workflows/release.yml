@@ -9,34 +9,34 @@ jobs:
     runs-on: macos-latest
 
     steps:
-    - uses: actions/checkout@v3
-      with:
-        fetch-depth: 0
-    - uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
-    - name: Update build version
-      run: python ./.github/workflows/update_pip_version.py -v ${{ github.event.release.tag_name }}
-    - name: Commit files
-      run: |
-        git config --local user.name ${{ github.actor }}
-        git add -A
-        git commit -m "Bump version number" 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install setuptools wheel twine build
-    - name: Build and upload
-      env:
-        TWINE_USERNAME: __token__
-        TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
-      run: |
-        python -m build
-        python -m twine upload dist/*
-    - name: Push changes
-      run: |
-        git branch tmp
-        git checkout main
-        git merge tmp
-        git branch -d tmp
-        git push
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+      - name: Update build version
+        run: python ./.github/workflows/update_pip_version.py -v ${{ github.event.release.tag_name }}
+      - name: Commit files
+        run: |
+          git config --local user.name ${{ github.actor }}
+          git add -A
+          git commit -m "Bump version number"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install setuptools wheel twine build
+      - name: Build and upload
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
+        run: |
+          python -m build
+          python -m twine upload dist/*
+      - name: Push changes
+        run: |
+          git branch tmp
+          git checkout main
+          git merge tmp
+          git branch -d tmp
+          git push
