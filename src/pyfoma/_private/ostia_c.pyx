@@ -128,33 +128,33 @@ cpdef ostia(
         pbar.update(1)
         while len(F) > 0:
             # (p, q, score)
-            top_scoring: Optional[Tuple[int, int, int]] = None
+            # top_scoring: Optional[Tuple[int, int, int]] = None
+            did_merge = False
             to_move_to_C = set()
             for f in F:
-                viable_merge = False
+                # viable_merge = False
                 for c in C:
-                    can_merge, fst, score = try_merge(fst, c, f, True, False)
-                    if can_merge:
-                        viable_merge = True
-                        if not top_scoring or score > top_scoring[2]:
-                            top_scoring = (c, f, score)
-                if not viable_merge:
+                    did_merge, fst, score = try_merge(fst, c, f, False, False)
+                    if did_merge:
+                        break
+                if did_merge:
+                    break
+                # if not viable_merge:
                     # f could not be merged anywhere, so now it goes to C
-                    to_move_to_C.add(f)
-            if top_scoring:
-                (p, q, _) = top_scoring
-                did_merge, fst, _ = try_merge(fst, p, q, False, False)
-            for f in to_move_to_C:
-                pbar.update(1)
-                C.add(f)
-                F.remove(f)
-                state = &fst.states[f]
-                transition_idx = state.out_head_idx
-                while transition_idx != -1:
-                    transition = &fst.transitions[transition_idx]
-                    if transition.target_state_idx not in C:
-                        F.add(transition.target_state_idx)
-                    transition_idx = transition.next_out_idx
+                to_move_to_C.add(f)
+
+            if not did_merge:
+                for f in to_move_to_C:
+                    pbar.update(1)
+                    C.add(f)
+                    F.remove(f)
+                    state = &fst.states[f]
+                    transition_idx = state.out_head_idx
+                    while transition_idx != -1:
+                        transition = &fst.transitions[transition_idx]
+                        if transition.target_state_idx not in C:
+                            F.add(transition.target_state_idx)
+                        transition_idx = transition.next_out_idx
     else:
         raise ValueError("Unrecognized mode")
 
