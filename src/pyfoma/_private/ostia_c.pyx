@@ -127,6 +127,7 @@ cpdef ostia(
         pbar = tqdm(total=fst.n_states, desc="Merging")
         pbar.update(1)
         while len(F) > 0:
+            logger.debug(f"States in F: {F}")
             # (p, q, score)
             # top_scoring: Optional[Tuple[int, int, int]] = None
             did_merge = False
