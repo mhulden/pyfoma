@@ -94,7 +94,7 @@ def best_word(fst: 'FST') -> List:
                 heapq.heappush(Q, (cheapest_transition.weight + w, next(cntr), target_state, seq + [label]))
     return []
 
-def ostia(samples: List[Tuple[Union[str, List[str]], Union[str, List[str]]]], merging_order: Literal["lex", "dd"], use_cython=True) -> 'FST':
+def ostia(samples: List[Tuple[Union[str, List[str]], Union[str, List[str]]]], merging_order: Literal["lex", "dd"], use_cython=True, time_limit: int = 86_400) -> 'FST':
     """Runs the [OSTIA](https://www.jeffreyheinz.net/classes/24F/655/materials/Oncina-et-al-1993-OSTIA.pdf) algorithm to infer an FST from a dataset.
 
     Args:
@@ -108,7 +108,7 @@ def ostia(samples: List[Tuple[Union[str, List[str]], Union[str, List[str]]]], me
             mode = Mode.data_driven
         else:
             raise ValueError()
-        return _ostia(samples, mode)
+        return _ostia(samples, mode, time_limit)
     else:
         from ._private.ostia_py import ostia as _ostia
         return _ostia(samples, merging_order)
