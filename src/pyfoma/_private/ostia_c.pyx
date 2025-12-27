@@ -2,6 +2,7 @@ import logging
 from copy import deepcopy
 from collections import defaultdict
 from tqdm import trange, tqdm
+from time import perf_counter
 from pyfoma.atomic import State, Transition
 from pyfoma.fst import FST
 from libc.stdlib cimport malloc, calloc, free
