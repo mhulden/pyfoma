@@ -84,8 +84,15 @@ cdef class C_FST:
 
 cpdef ostia(
     samples: list[tuple[str | list[str], str | list[str]]],
-    Mode mode=Mode.lexicographic
+    Mode mode=Mode.lexicographic,
+    double time_limit_seconds=-1,
 ):
+    cdef double deadline
+    if time_limit_seconds > 0:
+        deadline = perf_counter() + time_limit_seconds
+    else:
+        deadline = -1
+
     samples_as_lists = [
         (
             list(input) if isinstance(input, str) else input,
@@ -107,6 +114,9 @@ cpdef ostia(
     cdef C_Transition *transition
     if mode == Mode.lexicographic:
         for q_index in trange(fst.n_states, desc="Merging"):
+            if deadline > 0 and perf_counter() > deadline:
+                logger.warning("Time limit exceeded during merging")
+                return convert_to_pyfoma(fst, alphabet)
             # Find p < q where q can merge into p
             for p_index in range(q_index):
                 did_merge, fst, _ = try_merge(fst, p_index, q_index, False, True)
@@ -127,12 +137,18 @@ cpdef ostia(
         pbar = tqdm(total=fst.n_states, desc="Merging")
         pbar.update(1)
         while len(F) > 0:
+            if deadline > 0 and perf_counter() > deadline:
+                logger.warning("Time limit exceeded during merging")
+                return convert_to_pyfoma(fst, alphabet)
             logger.debug(f"States in F: {F}")
             # (p, q, score)
             # top_scoring: Optional[Tuple[int, int, int]] = None
             did_merge = False
             to_move_to_C = set()
             for f in F:
+                if deadline > 0 and perf_counter() > deadline:
+                    logger.warning("Time limit exceeded during merging")
+                    return convert_to_pyfoma(fst, alphabet)
                 # viable_merge = False
                 for c in C:
                     did_merge, fst, score = try_merge(fst, c, f, False, False)
