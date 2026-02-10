@@ -1802,3 +1802,12 @@ def project(fst: 'FST', dim = 0):
 
 def concatenate(fst1: 'FST', fst2: 'FST'):
     return fst1.concatenate(fst2)
+
+def union(fst1: 'FST', fst2: 'FST'):
+    return fst1.union(fst2)
+
+def kleene_star(fst: 'FST'):
+    return fst.kleene_star()
+    
+def kleene_plus(fst: 'FST'):
+    return fst.kleene_plus()
