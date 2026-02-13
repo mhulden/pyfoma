@@ -1399,6 +1399,8 @@ class FST:
     def rewrite(self, *contexts, **flags) -> 'FST':
         """Rewrite self in contexts in parallel, controlled by flags."""
         defs = {'crossproducts': self.__copy__()}
+        auxsymbols = {'@<@', '@>@', '#'}
+        defs['crossproducts'].alphabet |= auxsymbols
         defs['br'] = FST.re("'@<@'|'@>@'")
         defs['aux'] = FST.re(". - ($br|#)", defs)
         defs['dotted'] = FST.re(".*-(.* '@<@' '@>@' '@<@' '@>@' .*)")
