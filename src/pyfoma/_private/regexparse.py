@@ -252,7 +252,7 @@ class RegexParse:
         resetters = self.operators - self.unarypost
         counter, result = 0, []
         for token, value, line_num, column in tokens:  # It's a two-state FST!
-            if counter == 1 and token in {'LPAREN', 'COMPLEMENT'} | self.operands:
+            if counter == 1 and token in {'LPAREN', 'COMPLEMENT', 'FUNC'} | self.operands:
                 result.append(('CONCAT', '', line_num, column))
                 counter = 0
             if token in self.operands:
