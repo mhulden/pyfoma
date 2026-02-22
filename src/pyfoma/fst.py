@@ -11,7 +11,6 @@ from . import atomic, algorithms
 from .flag import FlagStringFilter, FlagOp
 from .atomic import State, Transition, all_transitions
 from ._private import util, partition_refinement
-from ._private.exceptions import NoFinalStatesException
 
 
 def harmonize_alphabet(func):
@@ -910,7 +909,7 @@ class FST:
            treated as epsilons in the input. print_flags toggels whether flag
            diacritics are printed in the output. """
         if len(self.finalstates) == 0:
-            raise NoFinalStatesException()
+            return
         IN, OUT = [-1, 0] if inverse else [0, -1]  # Tuple positions for input, output
         cntr = itertools.count()
         if isinstance(word, str):
@@ -949,7 +948,7 @@ class FST:
     def words(self: 'FST'):
         """A generator to yield all words. Yay BFS!"""
         if len(self.finalstates) == 0:
-            raise NoFinalStatesException()
+            return
         Q = deque([(self.initialstate, 0.0, [])])
         while Q:
             s, cost, seq = Q.popleft()
@@ -965,7 +964,7 @@ class FST:
     def words_cheapest(self):
         """A generator to yield all words in order of cost, cheapest first."""
         if len(self.finalstates) == 0:
-            raise NoFinalStatesException()
+            return
         cntr = itertools.count()
         Q: List[Tuple[float, int, Optional[State], List]] = [(0.0, next(cntr), self.initialstate, [])]
         while Q:
