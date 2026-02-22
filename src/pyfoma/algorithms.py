@@ -75,22 +75,6 @@ def dijkstra(fst: 'FST', state) -> float:
                 heapq.heappush(Q, (cost + w, next(cntr), trgt))
     return float("inf")
 
-def best_word(fst: 'FST') -> List:
-    explored, cntr = {fst.initialstate}, itertools.count()
-    Q = [(0.0, next(cntr), fst.initialstate, [])]
-    while Q:
-        w, _ , s, seq = heapq.heappop(Q)
-        if s is None:
-            return seq
-        explored.add(s)
-        if s in fst.finalstates:
-            heapq.heappush(Q, (w + s.finalweight, next(cntr), None, seq))
-
-        for label, transitions in s.transitions.items():
-            cheapest_transition = min(transitions, key=lambda t: t.weight)
-            if (target_state := cheapest_transition.targetstate) not in explored:
-                heapq.heappush(Q, (cheapest_transition.weight + w, next(cntr), target_state, seq + [label]))
-    return []
 
 def ostia(samples: List[Tuple[Union[str, List[str]], Union[str, List[str]]]], merging_order: Literal["lex", "dd"], use_cython=True) -> 'FST':
     """Runs the [OSTIA](https://www.jeffreyheinz.net/classes/24F/655/materials/Oncina-et-al-1993-OSTIA.pdf) algorithm to infer an FST from a dataset.
