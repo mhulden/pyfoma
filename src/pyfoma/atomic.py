@@ -1,8 +1,7 @@
 from collections import defaultdict
-from typing import Dict, Iterable, Optional, Set
+from typing import Dict, Iterable, Optional, Set, Tuple
 import itertools
 import heapq
-from typing_extensions import Tuple
 
 class Transition:
     __slots__ = 'targetstate', 'label', 'weight'
