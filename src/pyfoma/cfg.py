@@ -278,7 +278,10 @@ def draw_tree(ptb_str, style='tree', node_width=20, row_height=30):
     for m in memo:
         # Draw lines to children
         for k_x in m['kids']:
-            svg.append(f'<line x1="{m["x"]}" y1="{m["y"]+5}" x2="{k_x}" y2="{m["y"] + row_height - 15}" />')
+            svg.append(
+                f'<line x1="{m["x"]}" y1="{m["y"]+5}" x2="{k_x}" y2="{m["y"] + row_height - 15}" '
+                'stroke="#95a5a6" stroke-width="1" />'
+            )
 
         # Draw Box if requested
         if style == 'boxes':
@@ -287,7 +290,11 @@ def draw_tree(ptb_str, style='tree', node_width=20, row_height=30):
 
         # Draw Text
         weight = "bold" if not m['term'] else "normal"
-        svg.append(f'<text x="{m["x"]}" y="{m["y"]}" font-weight="{weight}">{m["label"]}</text>')
+        svg.append(
+            f'<text x="{m["x"]}" y="{m["y"]}" font-weight="{weight}" '
+            'font-family="sans-serif" font-size="12" text-anchor="middle" fill="#2c3e50">'
+            f'{m["label"]}</text>'
+        )
 
     svg.append('</svg>')
     svg_xml = "\n".join(svg)
