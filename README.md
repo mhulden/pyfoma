@@ -18,6 +18,12 @@ myfst.view()
 
 <img src="./docs/examples/images/quickstart1.png" width="722">
 
+### What's new
+* Mar 2026: added [SKILL.md](./skills/pyfoma-morphology) for creating morphological analyzers
+* Mar 2026: added support for [parsing](./src/pyfoma/cfg_parse.py) and [approximation](./src/pyfoma/cfg_approx.py) of CFGs
+* Feb 2026: [pyfoma.js port](https://github.com/fomafst/fomafst.github.io/blob/master/pyfomajs/pyfoma.js) allows [PyFoma regex compilation, visualization, and testing in the browser](https://fomafst.github.io/pyfomajs/)
+* Feb 2026: added support for [lexd](./src/pyfoma/lexd.py)
+
 ### Core documentation
 
 * [Regular Expression Compiler](./docs/examples/RegularExpressionCompiler.ipynb)
