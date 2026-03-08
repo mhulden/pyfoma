@@ -113,6 +113,14 @@ Test directed rules explicitly on overlapping inputs.
 - `lexd`: morphotactics, paradigms, lexical selection logic, irregular listing.
 - `FST.re` rules: alternation, insertion, deletion, assimilation, cleanup.
 
+### 5.1.1 Tool-fit policy
+
+Do not force every phenomenon into lexd.
+
+Use lexd when the hard part is morphotactic structure (what combines with what).
+Use direct transducer/rule modeling when the hard part is stem-internal alternation
+over full forms (for example, templatic alternation or broken-plural-like mappings).
+
 ### 5.2 Lexical-vs-surface side contract
 
 - Lexical side may contain grammatical tags and temporary class markers.
@@ -122,6 +130,12 @@ Test directed rules explicitly on overlapping inputs.
 ### 5.3 Productive vs irregular
 
 Keep productive morphology and irregular paradigms separate in lexical design.
+
+For irregular lemmas, enforce path exclusivity:
+- either keep irregular lemmas out of productive stem classes
+- or tag them (`[irreg]`, `[noplural]`, etc.) and block productive paths with selectors
+
+Otherwise you risk parallel outputs (intended irregular plus unintended regular).
 
 ### 5.4 Intermediate representations
 
@@ -192,6 +206,7 @@ Model-shape checks should verify:
 - exception list is explicit and bounded
 - rule count is not inflated by many one-off fixes
 - intermediate representation uses canonical morphemes unless a justified exception exists
+- irregular lemmas do not leak into unintended productive outputs
 
 ### 6.1 Gold-set automaton checks
 
@@ -218,6 +233,16 @@ If you want explicit missing/extra output sets, compare against output projectio
 fsts['generated_out'] = FST.re("$^output($grammar)", fsts)
 fsts['missing_out'] = FST.re("$gold - $generated_out", fsts)
 fsts['extra_out'] = FST.re("$generated_out - $gold", fsts)
+```
+
+Add an explicit irregular-leak check for known lemmas:
+
+```python
+irregular_lemmas = ["mouse", "goose"]
+blocked_surfaces = {"mouses", "gooses"}
+for lemma in irregular_lemmas:
+    for bad in blocked_surfaces:
+        assert bad not in set(grammar.generate(f"{lemma}<N><Pl>"))
 ```
 
 ## 7. Common failure modes

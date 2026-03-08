@@ -187,6 +187,39 @@ Additional guidance:
 - Keep marker classes interpretable (for example, “takes-es plural” or “true irregular”),
   not arbitrary bucket names.
 
+### 3.7 Irregular-path exclusivity pattern
+
+When a lemma has an irregular paradigm, prevent it from also using an unblocked
+productive path unless that parallel behavior is intentional.
+
+Two standard patterns:
+- Keep irregular lemmas in a separate lexicon path not referenced by productive stems.
+- Keep one shared stem inventory, but tag irregulars and block productive inflection
+  with selectors.
+
+Selector-based sketch:
+
+```text
+PATTERNS
+NounStem[-irreg] Number
+IrregNoun
+
+LEXICON NounStem
+cat
+dog
+mouse[irreg]
+
+LEXICON Number
+<N><Sg>:
+<N><Pl>:+s
+
+LEXICON IrregNoun
+mouse<N><Sg>:mouse
+mouse<N><Pl>:mice
+```
+
+This avoids unintended parallel outputs like `mouse -> mouses`.
+
 ## 4. PATTERNS and PATTERN expressions
 
 ### 4.1 Core operators
@@ -473,6 +506,9 @@ Example:
 
 10. **Mistake:** using abstract grammatical placeholders as the main intermediate morph string (for example `+PL`) when canonical morphs would work.
     **Fix:** prefer canonical morpheme representations (`+s`, `+es`, etc.) and keep feature tags on lexical side.
+
+11. **Mistake:** adding irregular entries but leaving the productive path unblocked for the same lemma.
+    **Fix:** isolate irregulars to a separate lexicon path, or mark and block productive paths with selectors/tags.
 
 ### 10.1 Design QA for lexd blocks
 
