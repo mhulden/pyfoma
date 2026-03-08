@@ -14,7 +14,9 @@ Use with:
 ## Output expectations
 
 When asked to build or revise a grammar, produce:
-1. Grammar code (`lexd` + rule cascade).
+1. Grammar code:
+   - `lexd` + rule cascade when `lexd` is available
+   - `FST.re` lexical transducer + rule cascade when `lexd` is unavailable
 2. A minimal executable test snippet that verifies generation and analysis.
 3. Short notes on rule ordering and known edge cases.
 4. A brief generalization note:
@@ -58,6 +60,8 @@ Use `lexd.compile(...)` for:
 - Non-concatenative structure supported by this implementation (reduplication/root-pattern patterns)
 
 Keep phonological alternation out of lexd unless it is true suppletion/irregular listing.
+If a stem-internal alternation is substantially clearer as a direct transducer over
+full stems, model that alternation in `FST.re` and keep lexd for class/tag routing.
 
 Anti-pattern to avoid:
 - Do not list productive pluralized outputs directly per noun in lexd.
@@ -127,6 +131,12 @@ Example pattern:
 - Productive stems in `NounRoot` + productive inflection.
 - Irregular whole forms in `IrregularNoun` lexicon block.
 
+Irregular-path exclusivity rule:
+- Do not let an irregular lemma also flow through an unblocked productive path.
+- Either keep irregular lemmas out of productive stem classes, or add selector/class
+  tags (for example `[irreg]`, `[noplural]`) that explicitly block the productive
+  paradigm for those lemmas.
+
 ### 7. Final QA
 
 Pass criteria:
@@ -145,6 +155,8 @@ Pass criteria:
   - productive rules are few and broad, not many micro-rules for tiny subsets
   - each lexical marker class is linguistically named and justified
   - exception handling is explicit and separated from productive rules
+- Irregular exclusivity checks pass:
+  - no unintended regular variants for irregular lemmas (unless explicitly intended)
 - Intermediate representation checks pass:
   - no abstract inflection placeholders in the final grammar unless explicitly justified
 
