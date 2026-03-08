@@ -1,4 +1,6 @@
-# PyFoma
+<p align="center">
+  <img src="docs/pyfoma-logo.png" width="200">
+</p>
 
 [![PyPI version](https://badge.fury.io/py/pyfoma.svg)](https://badge.fury.io/py/pyfoma)
 
@@ -16,7 +18,13 @@ myfst.view()
 
 <img src="./docs/examples/images/quickstart1.png" width="722">
 
-Next, check out the [documentation](https://mhulden.github.io/pyfoma/)!
+### Core documentation
+
+* [Regular Expression Compiler](./docs/examples/RegularExpressionCompiler.ipynb)
+* [Introduction to lexd](./docs/examples/lexd-intro.ipynb)
+* [Morphological Analyzer Tutorial](./docs/examples/MorphologicalAnalyzerTutorial.ipynb)
+* [CFG Parsing](./docs/examples/CFG%20Parsing.ipynb)
+* [CFG Approximation](./docs/examples/CFG%20Approximation.ipynb)
 
 ## Contributing
 
