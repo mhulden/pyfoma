@@ -341,11 +341,44 @@ def _wrap_top_level_colon_operands(regex: str) -> str:
 
     return f"{left}:{right}"
 
-def _tokenize_symbols(x: str) -> List[str]:
+def _tokenize_symbols(x: str, strict_quoted: bool = False) -> List[str]:
     x = x.strip()
     out: List[str] = []
     i = 0
     while i < len(x):
+        if x[i] == "'":
+            # Single-quoted multichar symbol in plain lexicon entries.
+            # Tolerant default: if unmatched, keep "'" as a literal symbol.
+            buf: List[str] = []
+            j = i + 1
+            closed = False
+            while j < len(x):
+                ch = x[j]
+                if ch == "\\":
+                    if j + 1 >= len(x):
+                        raise ValueError(f"Dangling escape in single-quoted symbol in {x!r}")
+                    nxt = x[j + 1]
+                    if nxt in ("\\", "'"):
+                        buf.append(nxt)
+                    else:
+                        # Preserve other escaped chars literally (without backslash).
+                        buf.append(nxt)
+                    j += 2
+                    continue
+                if ch == "'":
+                    closed = True
+                    break
+                buf.append(ch)
+                j += 1
+            if closed:
+                out.append("".join(buf))
+                i = j + 1
+                continue
+            if strict_quoted:
+                raise ValueError(f"Unclosed single-quoted symbol in {x!r}")
+            out.append("'")
+            i += 1
+            continue
         if x[i] == "<":
             j = x.find(">", i + 1)
             if j == -1:
@@ -942,27 +975,62 @@ def _split_escaped_fields(line: str) -> List[str]:
     """
     fields: List[str] = []
     buf: List[str] = []
-    esc = False
+    in_quote = False
     in_ws = True
-    for ch in line:
-        if esc:
+    i = 0
+    while i < len(line):
+        ch = line[i]
+
+        if in_quote:
+            if ch == "\\":
+                if i + 1 < len(line):
+                    # Preserve backslash escapes verbatim inside quoted symbols;
+                    # quote parsing is handled in _tokenize_symbols().
+                    buf.append("\\")
+                    buf.append(line[i + 1])
+                    i += 2
+                else:
+                    buf.append("\\")
+                    i += 1
+                in_ws = False
+                continue
+            if ch == "'":
+                in_quote = False
+                buf.append(ch)
+                i += 1
+                in_ws = False
+                continue
             buf.append(ch)
-            esc = False
+            i += 1
+            in_ws = False
+            continue
+
+        if ch == "'":
+            in_quote = True
+            buf.append(ch)
+            i += 1
             in_ws = False
             continue
         if ch == "\\":
-            esc = True
+            if i + 1 < len(line):
+                # Outside quotes, backslash escapes the next char into the same field.
+                buf.append(line[i + 1])
+                i += 2
+            else:
+                buf.append("\\")
+                i += 1
+            in_ws = False
             continue
         if ch.isspace():
             if not in_ws:
                 fields.append("".join(buf))
                 buf = []
                 in_ws = True
+            i += 1
             continue
         buf.append(ch)
+        i += 1
         in_ws = False
-    if esc:
-        buf.append("\\")
     if buf:
         fields.append("".join(buf))
     return fields
@@ -1111,6 +1179,7 @@ def _compile_lexicon_entry_variant(
     entry: LexEntry,
     col: Optional[int],
     side: str,
+    strict_quoted: bool = False,
 ) -> FST:
     if lex.arity == 1:
         content = entry.cols[0] if entry.cols else ""
@@ -1139,12 +1208,17 @@ def _compile_lexicon_entry_variant(
     surfside = surfside.strip()
 
     if side == "both":
-        labels = _entry_to_labels(lexside, surfside)
+        L = _tokenize_symbols(lexside, strict_quoted=strict_quoted)
+        R = _tokenize_symbols(surfside, strict_quoted=strict_quoted)
+        n = max(len(L), len(R))
+        L += [""] * (n - len(L))
+        R += [""] * (n - len(R))
+        labels = [_normalize_label((a, b)) for a, b in zip(L, R)]
     elif side == "out":
         use = surfside if surfside != "" else lexside
-        labels = [_normalize_label(("", s)) for s in _tokenize_symbols(use)]
+        labels = [_normalize_label(("", s)) for s in _tokenize_symbols(use, strict_quoted=strict_quoted)]
     elif side == "in":
-        labels = [_normalize_label((l, "")) for l in _tokenize_symbols(lexside)]
+        labels = [_normalize_label((l, "")) for l in _tokenize_symbols(lexside, strict_quoted=strict_quoted)]
     else:
         raise ValueError(side)
 
@@ -1159,6 +1233,7 @@ def _compile_lexicon_variant(
     col: Optional[int],
     side: str,
     selector: TagSelector,
+    strict_quoted: bool = False,
 ) -> FST:
     paths: List[Tuple[Tuple[str, ...], ...]] = []
     regex_union: Optional[FST] = None
@@ -1178,7 +1253,11 @@ def _compile_lexicon_variant(
             left = e.cols[col_in - 1] if col_in - 1 < len(e.cols) else ""
             right = e.cols[col_out - 1] if col_out - 1 < len(e.cols) else ""
             tmp_entry = LexEntry(cols=[f"{left}:{right}"], tags=set(e.tags))
-            variants.append(_compile_lexicon_entry_variant(tmp_lex, tmp_entry, col=1, side="both"))
+            variants.append(
+                _compile_lexicon_entry_variant(
+                    tmp_lex, tmp_entry, col=1, side="both", strict_quoted=strict_quoted
+                )
+            )
         f = union_all(variants) if variants else FST()
         return f.determinize().minimize_as_dfa()
 
@@ -1198,7 +1277,7 @@ def _compile_lexicon_variant(
         content = content.strip()
 
         if content.startswith("/") and content.endswith("/"):
-            rf = _compile_lexicon_entry_variant(lex, e, col, side)
+            rf = _compile_lexicon_entry_variant(lex, e, col, side, strict_quoted=strict_quoted)
             regex_union = rf if regex_union is None else union(regex_union, rf)
             continue
 
@@ -1211,12 +1290,17 @@ def _compile_lexicon_variant(
         surfside = surfside.strip()
 
         if side == "both":
-            labels = _entry_to_labels(lexside, surfside)
+            L = _tokenize_symbols(lexside, strict_quoted=strict_quoted)
+            R = _tokenize_symbols(surfside, strict_quoted=strict_quoted)
+            n = max(len(L), len(R))
+            L += [""] * (n - len(L))
+            R += [""] * (n - len(R))
+            labels = [_normalize_label((a, b)) for a, b in zip(L, R)]
         elif side == "out":
             use = surfside if surfside != "" else lexside
-            labels = [_normalize_label(("", s)) for s in _tokenize_symbols(use)]
+            labels = [_normalize_label(("", s)) for s in _tokenize_symbols(use, strict_quoted=strict_quoted)]
         elif side == "in":
-            labels = [_normalize_label((l, "")) for l in _tokenize_symbols(lexside)]
+            labels = [_normalize_label((l, "")) for l in _tokenize_symbols(lexside, strict_quoted=strict_quoted)]
         else:
             raise ValueError(side)
 
@@ -1240,12 +1324,17 @@ def _compile_lexicon_variant(
 # Compilation
 # ----------------------------------------
 
-def compile(grammar: str) -> FST:
-    """Compile a lexd grammar and return a pyfoma FST."""
-    return compile_lexd(parse_lexd(grammar))
+def compile(grammar: str, strict_quoted: bool = False) -> FST:
+    """Compile a lexd grammar and return a pyfoma FST.
+
+    strict_quoted controls single-quote behavior in plain lexicon entries:
+      - False (default): unmatched single quote is treated as a literal symbol
+      - True: unmatched single quote raises ValueError
+    """
+    return compile_lexd(parse_lexd(grammar), strict_quoted=strict_quoted)
 
 
-def compile_lexd(parsed: ParsedLexd) -> FST:
+def compile_lexd(parsed: ParsedLexd, strict_quoted: bool = False) -> FST:
     def resolve_name(name: str) -> str:
         return parsed.aliases.get(name, name)
 
@@ -1295,7 +1384,7 @@ def compile_lexd(parsed: ParsedLexd) -> FST:
             # See test-anonpat-modifier for the type of pattern where this is needed
             if name.startswith("__POSTSEL__:"): 
                 lit = name[len("__POSTSEL__:"):]
-                syms = _tokenize_symbols(lit)
+                syms = _tokenize_symbols(lit, strict_quoted=strict_quoted)
                 labels = [(s, s) for s in syms]
                 fst = from_tuples([labels])
                 return fst.determinize().minimize_as_dfa()
@@ -1304,7 +1393,9 @@ def compile_lexd(parsed: ParsedLexd) -> FST:
         cache_key = (base, tok.col, tok.side, tok.selector.clauses)
         if cache_key in lex_cache:
             return lex_cache[cache_key]
-        f = _compile_lexicon_variant(parsed.lexicons[base], tok.col, tok.side, tok.selector)
+        f = _compile_lexicon_variant(
+            parsed.lexicons[base], tok.col, tok.side, tok.selector, strict_quoted=strict_quoted
+        )
         lex_cache[cache_key] = f
         return f
 
@@ -1353,14 +1444,18 @@ def compile_lexd(parsed: ParsedLexd) -> FST:
                             entry = lexdef.entries[env[base]]
                             if not tok.selector.matches(entry.tags):
                                 return empty_fst()
-                            fst_head = _compile_lexicon_entry_variant(lexdef, entry, tok.col, tok.side)
+                            fst_head = _compile_lexicon_entry_variant(
+                                lexdef, entry, tok.col, tok.side, strict_quoted=strict_quoted
+                            )
                             return concatenate(fst_head, compile_seq_aligned(tail, env))
 
                         out = None
                         for idx, entry in enumerate(lexdef.entries):
                             if not tok.selector.matches(entry.tags):
                                 continue
-                            fst_head = _compile_lexicon_entry_variant(lexdef, entry, tok.col, tok.side)
+                            fst_head = _compile_lexicon_entry_variant(
+                                lexdef, entry, tok.col, tok.side, strict_quoted=strict_quoted
+                            )
                             env2 = dict(env)
                             env2[base] = idx
                             path = concatenate(fst_head, compile_seq_aligned(tail, env2))
@@ -1398,8 +1493,8 @@ def compile_lexd(parsed: ParsedLexd) -> FST:
                     return empty_fst()
                 left_str = ex.cols[ci - 1] if ci - 1 < len(ex.cols) else ""
                 right_str = ey.cols[co - 1] if co - 1 < len(ey.cols) else ""
-                left_syms = _tokenize_symbols(left_str)
-                right_syms = _tokenize_symbols(right_str)
+                left_syms = _tokenize_symbols(left_str, strict_quoted=strict_quoted)
+                right_syms = _tokenize_symbols(right_str, strict_quoted=strict_quoted)
                 L = max(len(left_syms), len(right_syms))
                 labels: List[Tuple[str, str]] = []
                 for i in range(L):
@@ -1420,8 +1515,8 @@ def compile_lexd(parsed: ParsedLexd) -> FST:
                     continue
                 left_str = ex.cols[ci - 1] if ci - 1 < len(ex.cols) else ""
                 right_str = ey.cols[co - 1] if co - 1 < len(ey.cols) else ""
-                left_syms = _tokenize_symbols(left_str)
-                right_syms = _tokenize_symbols(right_str)
+                left_syms = _tokenize_symbols(left_str, strict_quoted=strict_quoted)
+                right_syms = _tokenize_symbols(right_str, strict_quoted=strict_quoted)
                 L = max(len(left_syms), len(right_syms))
                 labels: List[Tuple[str, str]] = []
                 for i in range(L):
