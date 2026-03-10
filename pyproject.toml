@@ -37,17 +37,3 @@ dependencies = ["hatch-cython"]
 
 [tool.hatch.build.targets.wheel.hooks.cython.options]
 compile_py = false
-
-[tool.hatch.envs.default]
-dependencies = [
-    "IPython",
-]
-
-[tool.hatch.envs.hatch-test]
-dependencies = [
-    "pytest",
-    "coverage",
-]
-
-[[tool.hatch.envs.hatch-test.matrix]]
-python = ["3.10", "3.13"]
