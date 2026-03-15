@@ -1415,8 +1415,7 @@ class FST:
         if flags.get('longest', False) == 'True':
             worseners.append(FST.re(".* '@<@' $aux+ '':('@>@' '@<@'?) $aux ($br:''|'':$br|$aux)* .*", defs))
         if flags.get('leftmost', False) == 'True':
-            worseners.append(FST.re(\
-                ".* '@<@':'' $aux+ ('':'@<@' $aux* '':'@>@' $aux+ '@>@':'' .* | '':'@<@' $aux* '@>@':'' $aux* '':'@>@' .*)", defs))
+            worseners.append(FST.re(".* '@<@':'' $aux+ '':'@<@' $aux* ('':'@>@' $aux+ '@>@':'' .* | '@>@':'' $aux* '':'@>@') .*", defs))
         if flags.get('shortest', False) == 'True':
             worseners.append(FST.re(".* '@<@' $aux* '@>@':'' $aux+ '':'@>@' .*", defs))
         defs['worsen'] = functools.reduce(lambda x, y: x.union(y), worseners).determinize_unweighted().minimize()
