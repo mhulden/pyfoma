@@ -23,6 +23,12 @@ class TestFST(unittest.TestCase):
         )
         self.assertEqual(list(bigrule.apply("anpinkamto"))[0], "ampiŋkanto")
 
+    def test_rewrite_outputcontexts(self):
+        f1 = FST.re("$^rewrite((ab):x / ab _ a)")
+        f2 = FST.re("$^rewrite((ab):x / ab _ a, outputcontexts = True)")
+        self.assertEqual(set(f1.generate("abababa")), {"abxxa"})
+        self.assertEqual(set(f2.generate("abababa")), {"abxaba", "ababxa"})
+
     def test_rewrite_weights(self):
         f1 = FST.re("$^rewrite(a:?(b<1.0>))")
         res = list(f1.analyze("bbb", weights=True))

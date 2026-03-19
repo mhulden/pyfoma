@@ -1449,6 +1449,14 @@ class FST:
 
     def rewrite(self, *contexts, **flags) -> 'FST':
         """Rewrite self in contexts in parallel, controlled by flags."""
+        def _flag_true(name: str) -> bool:
+            raw = flags.get(name, False)
+            if isinstance(raw, bool):
+                return raw
+            if isinstance(raw, str):
+                return raw.strip().lower() in {"true", "1", "yes", "on"}
+            return bool(raw)
+
         defs = {'crossproducts': self.__copy__()}
         auxsymbols = {'@<@', '@>@', '#'}
         defs['crossproducts'].alphabet |= auxsymbols
@@ -1459,16 +1467,20 @@ class FST:
         if len(contexts) > 0:
             center = FST.re("'@<@' (.-'@>@')* '@>@'")
             lrpairs = ([l.ignore(defs['br']), r.ignore(defs['br'])] for l,r in contexts)
-            defs['rule'] = center.context_restrict(*lrpairs, rewrite = True).compose(defs['base'])
+            restricted = center.context_restrict(*lrpairs, rewrite = True)
+            if _flag_true('outputcontexts'):
+                defs['rule'] = defs['base'].compose(restricted)
+            else:
+                defs['rule'] = restricted.compose(defs['base'])
         else:
             defs['rule'] = defs['base']
         defs['remrewr'] = FST.re("'@<@':'' (.-'@>@')* '@>@':''") # worsener
         worseners = [FST.re(".* $remrewr (.|$remrewr)*", defs)]
-        if flags.get('longest', False) == 'True':
+        if _flag_true('longest'):
             worseners.append(FST.re(".* '@<@' $aux+ '':('@>@' '@<@'?) $aux ($br:''|'':$br|$aux)* .*", defs))
-        if flags.get('leftmost', False) == 'True':
+        if _flag_true('leftmost'):
             worseners.append(FST.re(".* '@<@':'' $aux+ '':'@<@' $aux* ('':'@>@' $aux+ '@>@':'' .* | '@>@':'' $aux* '':'@>@') .*", defs))
-        if flags.get('shortest', False) == 'True':
+        if _flag_true('shortest'):
             worseners.append(FST.re(".* '@<@' $aux* '@>@':'' $aux+ '':'@>@' .*", defs))
         defs['worsen'] = functools.reduce(lambda x, y: x.union(y), worseners).determinize_unweighted().minimize()
         defs['rewr'] = FST.re("$^output($^input($rule) @ $worsen)", defs)
