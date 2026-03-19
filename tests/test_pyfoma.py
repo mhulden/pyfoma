@@ -100,6 +100,12 @@ class TestFST(unittest.TestCase):
         self.assertEqual(f1.alphabet, {"[NOUN]", "[VERB]"})
         f2 = FST.regex(r"'[NO\'UN]' '[VERB]'")
         self.assertEqual(f2.alphabet, {"[NO'UN]", "[VERB]"})
+        with self.assertRaises(SyntaxError):
+            FST.regex("'ab")
+        with self.assertRaises(SyntaxError):
+            FST.regex("a'")
+        f3 = FST.regex("'''")
+        self.assertEqual(f3.alphabet, {"'"})
 
     def test_range_quantifiers(self):
         f0 = FST.regex("a{0}")

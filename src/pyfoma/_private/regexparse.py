@@ -246,6 +246,8 @@ class RegexParse:
                 op = self.shortops[value]
             elif op == 'PARAM':
                 value = value.replace(" ", "").split('=')
+            elif op == 'SYMBOL' and value == "'":
+                self._error_report(SyntaxError, "Unterminated or stray single quote.", line_num, column)
             res.append((op, value, line_num, column))
         return res
 
