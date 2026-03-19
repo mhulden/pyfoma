@@ -1537,6 +1537,52 @@ class FST:
         return FST.re(".* - $X", {"X": self})
 
     @harmonize_alphabet
+    def shuffle(self, fst2: 'FST') -> 'FST':
+        """Return the shuffle of self and fst2 by interleaving their transitions.
+
+        The algorithm tracks a pair of states (one in each FST), like product
+        construction, but every transition moves in exactly one component while
+        the other component stays put.
+        """
+        fst1 = self.__copy__()
+        fst2 = fst2.__copy__()
+        fst1.number_unnamed_states()
+        fst2.number_unnamed_states()
+
+        new_fst = FST()
+        Q = deque([(fst1.initialstate, fst2.initialstate)])
+        S = {(fst1.initialstate, fst2.initialstate): new_fst.initialstate}
+
+        while Q:
+            s1, s2 = Q.pop()
+            currentstate = S[(s1, s2)]
+            currentstate.name = (s1.name, s2.name)
+
+            if s1 in fst1.finalstates and s2 in fst2.finalstates:
+                new_fst.finalstates.add(currentstate)
+                currentstate.finalweight = s1.finalweight + s2.finalweight
+
+            for lbl, transitions in s1.transitions.items():
+                for tr in transitions:
+                    targetpair = (tr.targetstate, s2)
+                    if targetpair not in S:
+                        S[targetpair] = State()
+                        new_fst.states.add(S[targetpair])
+                        Q.append(targetpair)
+                    currentstate.add_transition(S[targetpair], lbl, tr.weight)
+
+            for lbl, transitions in s2.transitions.items():
+                for tr in transitions:
+                    targetpair = (s1, tr.targetstate)
+                    if targetpair not in S:
+                        S[targetpair] = State()
+                        new_fst.states.add(S[targetpair])
+                        Q.append(targetpair)
+                    currentstate.add_transition(S[targetpair], lbl, tr.weight)
+
+        return new_fst
+
+    @harmonize_alphabet
     def product(self, fst2: 'FST', finalf = any, oplus = min, pathfollow = lambda x,y: x|y) -> 'FST':
         """Generates the product FST from fst1, fst2. The helper functions by default
         produce fst1|fst2."""
