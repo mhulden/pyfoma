@@ -398,8 +398,9 @@ class TestUtil(unittest.TestCase):
                 syms = re.split(r"(?<!\\)\|", label)
                 self.assertIn(f"{src}|{syms[0]}", js_json["t"])
                 for arc in arcs:
+                    arc_dest = arc[0] if isinstance(arc, (tuple, list)) else arc
                     self.assertIn(
-                        {str(arc): syms[-1]}, js_json["t"][f"{src}|{syms[0]}"]
+                        {str(arc_dest): syms[-1]}, js_json["t"][f"{src}|{syms[0]}"]
                     )
         # Compare with output of foma2js.perl, sort of (it has various
         # issues, which have been fixed then dumped to JSON)
@@ -419,11 +420,12 @@ class TestUtil(unittest.TestCase):
                 for label in d["transitions"][src]:
                     syms = re.split(r"(?<!\\)\|", label)
                     for arc in d["transitions"][src][label]:
+                        arc_dest = arc[0] if isinstance(arc, (tuple, list)) else arc
                         for jarc in foma_json["t"][f"{jsrc}|{syms[0]}"]:
                             for jdst, jsym in jarc.items():
                                 if jsym != syms[-1]:
                                     continue
-                                Q.append((arc, jdst))
+                                Q.append((arc_dest, jdst))
 
     def test_to_js_empty_alphabet(self):
         fst = FST.regex("''")
@@ -433,6 +435,20 @@ class TestUtil(unittest.TestCase):
         self.assertEqual(js_json["maxlen"], 0)
         self.assertEqual(js_json["s"], {})
         self.assertEqual(js_json["t"], {})
+
+    def test_fromdict_preserves_transition_weights(self):
+        fst1 = FST.regex("a<2.0>")
+        fst2 = FST.fromdict(json.loads(json.dumps(fst1.todict())))
+        self.assertEqual(list(fst1.generate("a", weights=True)), [("a", 2.0)])
+        self.assertEqual(list(fst2.generate("a", weights=True)), [("a", 2.0)])
+
+    def test_to_js_weighted_transitions(self):
+        fst = FST.regex("a<2.0>")
+        js = fst.tojs()
+        js_dict = re.sub(r"^var \w+ = (.*);", r"\1", js)
+        js_json = json.loads(js_dict)
+        self.assertIn("0|a", js_json["t"])
+        self.assertIn({"1": "a"}, js_json["t"]["0|a"])
 
 
 if __name__ == "__main__":

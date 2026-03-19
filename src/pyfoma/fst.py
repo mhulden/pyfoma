@@ -747,9 +747,10 @@ class FST:
                 # already uses the same convention of epsilon='', and JSON
                 # encoding will take care of escaping everything for us.
                 for arc in sorted(arcs, key=operator.attrgetter("weight")):
+                    dest = statenums[id(arc.targetstate)]
+                    target = dest if arc.weight == 0.0 else [dest, arc.weight]
                     transitions.setdefault(src, {}).setdefault(tlabel, []).append(
-                        # Ignore weights for now (but will support soon)
-                        statenums[id(arc.targetstate)]
+                        target
                     )
             if state in self.finalstates:
                 finals[src] = state.finalweight
@@ -773,7 +774,7 @@ class FST:
                     # NOTE: There is no reason for these to be
                     # separate objects, but foma_apply_down.js wants
                     # them that way.
-                    {arc: osym} for arc in arcs
+                    {arc[0] if isinstance(arc, (tuple, list)) else arc: osym} for arc in arcs
                 )
         # NOTE: in reality foma_apply_down.js only needs the *input*
         # symbols, so we could further optimize this.
