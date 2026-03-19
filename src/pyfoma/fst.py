@@ -14,28 +14,35 @@ from ._private import util, partition_refinement
 
 
 def harmonize_alphabet(func):
-    """A wrapper for expanding .-symbols when operations of arity 2 are performed.
-        For example, if calculating the union of FSM1 and FSM2, and both contain
-        .-symbols, the transitions with . are expanded to include the symbols that
-        are present in the other FST."""
+    """Transition wildcard (.) harmonization for binary FST operations."""
     @functools.wraps(func)
     def wrapper_decorator(self, other, **kwargs):
-        for A, B in [(self, other), (other, self)]:
-            if '.' in A.alphabet and (A.alphabet - {'.'}) != (B.alphabet - {'.'}):
-                Aexpand = B.alphabet - A.alphabet - {'.', ''}
-                if A == other:
-                    A, _ = other.copy_filtered()
-                    other = A # Need to copy to avoid mutating other
-                for s, l, t in list(all_transitions(A.states)):
-                    if '.' in l:
-                        for sym in Aexpand:
-                            newl = tuple(lbl if lbl != '.' else sym for lbl in l)
-                            s.add_transition(t.targetstate, newl, t.weight)
+        def _expand_side(fst_obj, extra_symbols):
+            if '.' not in fst_obj.alphabet or not extra_symbols:
+                return fst_obj
+            expanded, _ = fst_obj.copy_filtered()
+            for s, l, t in list(all_transitions(expanded.states)):
+                if '.' not in l:
+                    continue
+                for sym in extra_symbols:
+                    newl = tuple(lbl if lbl != '.' else sym for lbl in l)
+                    existing = s.transitions.get(newl, ())
+                    if not any(
+                        arc.targetstate is t.targetstate and arc.weight == t.weight
+                        for arc in existing
+                    ):
+                        s.add_transition(t.targetstate, newl, t.weight)
+            expanded.alphabet |= extra_symbols
+            return expanded
 
-        newalphabet = self.alphabet | other.alphabet
+        original_self, original_other = self, other
+        self_expand = original_other.alphabet - original_self.alphabet - {'.', ''}
+        other_expand = original_self.alphabet - original_other.alphabet - {'.', ''}
+        self = _expand_side(original_self, self_expand)
+        other = _expand_side(original_other, other_expand)
+
         value = func(self, other, **kwargs)
-        # Do something after
-        value.alphabet = newalphabet
+        value.alphabet = original_self.alphabet | original_other.alphabet
         return value
     return wrapper_decorator
 
