@@ -48,6 +48,7 @@ class State:
 
     def rename_label(self, original, new):
         """Changes labels in a state's transitions from original to new."""
+        self._invalidate_transition_indexes()
         for t in self.transitions[original]:
             t.label = new
         self.transitions[new] = self.transitions.get(new, set()) | self.transitions[original]
@@ -55,6 +56,7 @@ class State:
 
     def remove_transitions_to_targets(self, targets):
         """Remove all transitions from self to any state in the set targets."""
+        self._invalidate_transition_indexes()
         newt = {}
         for label, transitions in self.transitions.items():
             newt[label] = {t for t in transitions if t.targetstate not in targets}
@@ -64,9 +66,14 @@ class State:
 
     def add_transition(self, other: 'State', label, weight=0.0):
         """Add transition from self to other with label and weight."""
+        self._invalidate_transition_indexes()
         newtrans = Transition(other, label, weight)
         self.transitions[label] = self.transitions.get(label, set()) | {newtrans}
         return newtrans
+
+    def _invalidate_transition_indexes(self):
+        self._transitions_by_input = None
+        self._transitions_by_output = None
 
     def all_transitions(self):
         """Generator for all transitions out from a given state."""

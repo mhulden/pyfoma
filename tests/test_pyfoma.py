@@ -175,6 +175,20 @@ class TestFST(unittest.TestCase):
         self.assertEqual("octopus", next(f3.generate("cat")))
         self.assertEqual("cat", next(f4.generate("dog")))
 
+    def test_compose_after_mutating_cached_operand(self):
+        f1 = FST.regex("a|b")
+        f2 = FST.regex("(a):(x)")
+        final = next(iter(f2.finalstates))
+
+        # Prime cached transition index, then mutate.
+        _ = f2.initialstate.transitions_by_input
+        f2.initialstate.add_transition(final, ("b", "y"), 0.0)
+        f2.alphabet |= {"b", "y"}
+
+        composed = f1.compose(f2)
+        self.assertEqual(set(composed.generate("a")), {"x"})
+        self.assertEqual(set(composed.generate("b")), {"y"})
+
     def test_constructor_defaults_not_shared(self):
         f1 = FST()
         f1.alphabet.add("x")
