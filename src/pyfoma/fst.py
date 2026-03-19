@@ -52,7 +52,7 @@ class FST:
     # Initializers
     # ==================
 
-    def __init__(self, label:Optional[Tuple]=None, weight=0.0, alphabet=set()):
+    def __init__(self, label:Optional[Tuple]=None, weight=0.0, alphabet=None):
         """Creates an FST-structure with a single state.
 
         :param label: create a two-state FST that accepts label
@@ -70,6 +70,8 @@ class FST:
         created, but the initial state will be made final with weight 'weight'.
         """
 
+        if alphabet is None:
+            alphabet = set()
         self.alphabet = alphabet
         """The alphabet used by the FST"""
         self.initialstate = State()
@@ -117,7 +119,7 @@ class FST:
         return newfst
 
     @classmethod
-    def regex(cls, regularexpression, defined = {}, functions = set(), multichar_symbols=None):
+    def regex(cls, regularexpression, defined=None, functions=None, multichar_symbols=None):
         """Compile a regular expression and return the resulting FST.
            Keyword arguments:
            defined -- a dictionary of defined FSTs that the compiler can access whenever
@@ -126,6 +128,10 @@ class FST:
                        is referenced in the regex, e.g. $^myfunc(...)
         """
         import pyfoma._private.regexparse as regexparse
+        if defined is None:
+            defined = {}
+        if functions is None:
+            functions = set()
         if multichar_symbols is not None:
             escaper = regexparse._multichar_matcher(multichar_symbols)
             regularexpression = escaper.sub(regexparse._multichar_replacer, regularexpression)

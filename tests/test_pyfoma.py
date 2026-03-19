@@ -169,6 +169,12 @@ class TestFST(unittest.TestCase):
         self.assertEqual("octopus", next(f3.generate("cat")))
         self.assertEqual("cat", next(f4.generate("dog")))
 
+    def test_constructor_defaults_not_shared(self):
+        f1 = FST()
+        f1.alphabet.add("x")
+        f2 = FST()
+        self.assertEqual(f2.alphabet, set())
+
 
 class TestSymbols(unittest.TestCase):
     """Test multi-character symbol feature"""
