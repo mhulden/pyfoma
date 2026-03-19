@@ -1852,6 +1852,9 @@ def concatenate(fst1: 'FST', fst2: 'FST'):
 def union(fst1: 'FST', fst2: 'FST'):
     return fst1.union(fst2)
 
+def shuffle(fst1: 'FST', fst2: 'FST'):
+    return fst1.shuffle(fst2)
+
 def kleene_star(fst: 'FST'):
     return fst.kleene_star()
     
