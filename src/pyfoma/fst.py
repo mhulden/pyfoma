@@ -609,13 +609,19 @@ class FST:
         states: List[State] = []
         ssyms: List[str] = []
         ssymtab = {}
+        seen = set()
+        queued = {id(self.initialstate)}
         while q:
             state = q.popleft()
+            sid = id(state)
+            if sid in seen:
+                continue
+            seen.add(sid)
             if state.name is None or not state_symbols:
                 name = str(len(ssyms))
             else:
                 name = state.name
-            ssymtab[id(state)] = name
+            ssymtab[sid] = name
             ssyms.append(name)
             states.append(state)
             # Make sure to sort here too as the order of insertion will
@@ -625,7 +631,9 @@ class FST:
                 # FIXME: it is not possible to guarantee the ordering
                 # here.  Consider not using `set` for arcs.
                 for arc in sorted(arcs, key=operator.attrgetter("weight")):
-                    if id(arc.targetstate) not in ssymtab:
+                    tid = id(arc.targetstate)
+                    if tid not in queued:
+                        queued.add(tid)
                         q.append(arc.targetstate)
         if state_symbols:
             with open(ssympath, "wt") as outfh:
@@ -638,7 +646,7 @@ class FST:
 
         def output_state(s: State, outfh: TextIO):
             name = ssymtab[id(s)]
-            for label, arcs in sorted(state.transitions.items(),
+            for label, arcs in sorted(s.transitions.items(),
                                       key=operator.itemgetter(0)):
                 if len(label) == 1:
                     isym = osym = (label[0] or epsilon)

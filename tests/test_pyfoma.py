@@ -318,6 +318,18 @@ class TestUtil(unittest.TestCase):
                 #      --keep_osymbols --keep_state_numbering \
                 #      test_st.fst | fstprint
 
+    def test_to_att_no_duplicate_lines(self):
+        with TemporaryDirectory() as tempdir:
+            path = Path(tempdir)
+            f = FST.re("ab|cb")
+            f.save_att(path / "dupe.att")
+            with open(path / "dupe.att", "rt") as infh:
+                att = [line for line in infh.read().strip().splitlines() if line]
+            b_arcs = [line for line in att if "\tb\tb" in line and line.count("\t") >= 3]
+            final_lines = [line for line in att if "\t" not in line]
+            self.assertEqual(len(b_arcs), 1)
+            self.assertEqual(len(final_lines), 1)
+
     def test_todict(self):
         """Ensure that json is the same for equivalent FSTs"""
         rx = r"""
