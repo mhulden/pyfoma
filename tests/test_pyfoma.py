@@ -425,6 +425,15 @@ class TestUtil(unittest.TestCase):
                                     continue
                                 Q.append((arc, jdst))
 
+    def test_to_js_empty_alphabet(self):
+        fst = FST.regex("''")
+        js = fst.tojs()
+        js_dict = re.sub(r"^var \w+ = (.*);", r"\1", js)
+        js_json = json.loads(js_dict)
+        self.assertEqual(js_json["maxlen"], 0)
+        self.assertEqual(js_json["s"], {})
+        self.assertEqual(js_json["t"], {})
+
 
 if __name__ == "__main__":
     unittest.main()

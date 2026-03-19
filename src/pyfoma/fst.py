@@ -779,8 +779,8 @@ class FST:
         # symbols, so we could further optimize this.
         fstdict["s"] = fstdict["alphabet"]
         del fstdict["alphabet"]
-        fstdict["maxlen"] = max(len(k.encode('utf-16le'))
-                                for k in fstdict["s"]) // 2
+        fstdict["maxlen"] = max((len(k.encode('utf-16le'))
+                                 for k in fstdict["s"]), default=0) // 2
         fstdict["f"] = fstdict["finals"]
         del fstdict["finals"]
         fstdict["t"] = transitions
