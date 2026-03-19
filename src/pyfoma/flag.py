@@ -22,11 +22,11 @@ class FlagOp:
         The parameter 'sym' should follow the format [[XYZ]], for
         example "[[$Num=Sg]]", where:
 
-        1. X is a variable name matching the regex "[$]\w+" 
+        1. X is a variable name matching the regex "[$]\\w+" 
         2. Y is one of the operators "=" (set value), "==" (check that
         value equals), "!=" (check that value does not equal) or "$="
         (unify to value) 
-        3. Z is a value matching the regex "[$]?\w+". If the value
+        3. Z is a value matching the regex "[$]?\\w+". If the value
         starts with $, then it refers to a variable.
 
         More formally, any flag diacritic needs to match the
@@ -34,9 +34,9 @@ class FlagOp:
 
         """
 
-        match1 = re.match(FLAGRE1,sym)
-        match2 = re.match(FLAGRE2,sym)
-        match3 = re.match(FLAGRE3,sym)
+        match1 = re.fullmatch(FLAGRE1,sym)
+        match2 = re.fullmatch(FLAGRE2,sym)
+        match3 = re.fullmatch(FLAGRE3,sym)
 
         if match1:
             self.var, self.op, self.val = match1.group(1,2,3)
@@ -66,9 +66,9 @@ class FlagOp:
         otherwise.
 
         """
-        return (re.match(FLAGRE1,sym) != None or
-                re.match(FLAGRE2,sym) != None or
-                re.match(FLAGRE3,sym) != None)
+        return (re.fullmatch(FLAGRE1,sym) != None or
+                re.fullmatch(FLAGRE2,sym) != None or
+                re.fullmatch(FLAGRE3,sym) != None)
     
 
     @staticmethod
@@ -195,6 +195,8 @@ class TestFlagOp(unittest.TestCase):
         for op in "?= == != =".split():
             self.assertFalse(FlagOp.is_flag("[$var{op}val]"))
             self.assertFalse(FlagOp.is_flag("[[var{op}val]]"))
+            self.assertFalse(FlagOp.is_flag(f"[[$var{op}val]]junk"))
+            self.assertFalse(FlagOp.is_flag(f"junk[[$var{op}val]]"))
         self.assertTrue(FlagOp.is_flag("[[$var=]]"))
         self.assertFalse(FlagOp.is_flag("[[$var==]]"))
         self.assertFalse(FlagOp.is_flag("[[$var!=]]"))
