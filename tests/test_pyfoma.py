@@ -76,6 +76,19 @@ class TestFST(unittest.TestCase):
         f2 = FST.re("a b")
         self.assertEqual(list(f1.words()), list(f2.words()))
 
+    def test_shuffle(self):
+        f1 = FST.re("$^shuffle(cat,if)")
+        expected = {
+            "catif", "caitf", "caift", "ciatf", "ciaft",
+            "cifat", "icatf", "icaft", "icfat", "ifcat",
+        }
+        generated = {''.join(lbl[0] for lbl in seq) for _, seq in f1.words()}
+        self.assertEqual(generated, expected)
+
+        f2 = FST.re("$^shuffle(a<1.0>,b<2.0>)")
+        weighted = {''.join(lbl[0] for lbl in seq): cost for cost, seq in f2.words()}
+        self.assertEqual(weighted, {"ab": 3.0, "ba": 3.0})
+
     def test_tokenizer(self):
         f1 = FST.regex(r"'[NOUN]' '[VERB]'")
         self.assertEqual(f1.alphabet, {"[NOUN]", "[VERB]"})
