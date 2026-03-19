@@ -688,6 +688,9 @@ class FST:
     def todict(self) -> Dict[str, Any]:
         """Create a dictionary form of the FST for export to
         JSON.  May be post-processed for optimization in Javascript."""
+        def _escape_sym(sym: str) -> str:
+            return sym.replace("\\", "\\\\").replace("|", "\\|")
+
         # Traverse, renumbering all the states, because:
         # 1. It removes unreachable states and saves space/bandwidth
         # 2. The JS code requires the initial state to have number 0
@@ -731,8 +734,9 @@ class FST:
                         # Reserve 0, 1, 2 for epsilon, identity, unknown
                         # (actually not necessary)
                         alphabet[sym] = 3 + len(alphabet)
-                    sym = pyre.sub(r"\?|", r"\|", sym)
-                tlabel = isym if isym == osym else f"{isym}|{osym}"
+                escaped_isym = _escape_sym(isym)
+                escaped_osym = _escape_sym(osym)
+                tlabel = escaped_isym if isym == osym else f"{escaped_isym}|{escaped_osym}"
                 # Nothing to do to the symbols beyond that as pyfoma
                 # already uses the same convention of epsilon='', and JSON
                 # encoding will take care of escaping everything for us.
@@ -742,7 +746,7 @@ class FST:
                         statenums[id(arc.targetstate)]
                     )
             if state in self.finalstates:
-                finals[src] = 1
+                finals[src] = state.finalweight
         return {
             "transitions": transitions,
             "alphabet": alphabet,
@@ -781,6 +785,25 @@ class FST:
     @classmethod
     def fromdict(cls, fstdict: Dict) -> "FST":
         """Recreate an FST from dictionary form."""
+        def _unescape_sym(sym: str) -> str:
+            out = []
+            i = 0
+            while i < len(sym):
+                if sym[i] == "\\" and i + 1 < len(sym):
+                    out.append(sym[i + 1])
+                    i += 2
+                else:
+                    out.append(sym[i])
+                    i += 1
+            return "".join(out)
+
+        def _final_weight(raw) -> float:
+            if isinstance(raw, bool):
+                return 0.0 if raw else float("inf")
+            if isinstance(raw, int):
+                return 0.0 if raw == 1 else float(raw)
+            return float(raw)
+
         fst = FST(alphabet=set(fstdict["alphabet"].keys()))
         states: List[State] = []
 
@@ -794,20 +817,34 @@ class FST:
                     fst.initialstate = state
                 if idx in fstdict["finals"]:
                     fst.finalstates.add(state)
-                    state.finalweight = fstdict["finals"][idx]
+                    state.finalweight = _final_weight(fstdict["finals"][idx])
                 elif str(idx) in fstdict["finals"]:
                     fst.finalstates.add(state)
-                    state.finalweight = fstdict["finals"][str(idx)]
+                    state.finalweight = _final_weight(fstdict["finals"][str(idx)])
             return states[state_idx]
+
+        state_indices = set()
+        for src, arcs in fstdict["transitions"].items():
+            state_indices.add(int(src))
+            for targets in arcs.values():
+                for target in targets:
+                    if isinstance(target, (tuple, list)):
+                        dest = target[0]
+                    else:
+                        dest = target
+                    state_indices.add(int(dest))
+        state_indices |= {int(k) for k in fstdict["finals"].keys()}
+        if state_indices:
+            add_up_to(max(state_indices))
 
         for src, arcs in fstdict["transitions"].items():
             src_state = add_up_to(int(src))
             for tlabel, targets in arcs.items():
-                labels = tuple(sym.replace(r"\|", "|")
+                labels = tuple(_unescape_sym(sym)
                                for sym
-                               in pyre.split(r"(?<!\\)\|", tlabel, maxsplit=2))
+                               in pyre.split(r"(?<!\\)\|", tlabel, maxsplit=1))
                 for target in targets:
-                    if isinstance(target, tuple):
+                    if isinstance(target, (tuple, list)):
                         dest, weight = target
                     else:
                         dest = target

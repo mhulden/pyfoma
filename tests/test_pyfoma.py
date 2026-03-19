@@ -356,6 +356,18 @@ class TestUtil(unittest.TestCase):
         fst2 = FST.fromdict(fst1.todict())
         assert json.dumps(fst1.todict()) == json.dumps(fst2.todict())
 
+    def test_fromdict_preserves_pipe_symbols(self):
+        fst1 = FST.regex("'a|b'")
+        fst2 = FST.fromdict(json.loads(json.dumps(fst1.todict())))
+        self.assertEqual(set(fst1.generate("a|b")), {"a|b"})
+        self.assertEqual(set(fst2.generate("a|b")), {"a|b"})
+
+    def test_fromdict_preserves_final_weights(self):
+        fst1 = FST.regex("''<2.5>")
+        fst2 = FST.fromdict(json.loads(json.dumps(fst1.todict())))
+        self.assertEqual(list(fst1.generate("", weights=True)), [("", 2.5)])
+        self.assertEqual(list(fst2.generate("", weights=True)), [("", 2.5)])
+
     def test_to_js_on(self):
         # Has no maxlen anymore, downstream code should do that
         d = self.fst.todict()
