@@ -118,6 +118,12 @@ class RegexParse:
         def _getargs(s):
             return _stackcheck(s).pop()
 
+        def _repeat_exact(langfst, n):
+            out = fst.FST(label=('',))
+            for _ in range(n):
+                out = fst.concatenate(out, langfst)
+            return out
+
         stack, parameterstack = [], []
         for op, value, line_num, column in self.parsed:
             # breakpoint()
@@ -163,19 +169,18 @@ class RegexParse:
                 rng = value.split(',')
                 lang = _pop(stack)
                 if len(rng) == 1:  # e.g. {3}
-                    _append(stack, functools.reduce(lambda x, y: fst.concatenate(x, y), [lang] * int(value)))
+                    _append(stack, _repeat_exact(lang, int(value)))
                 elif rng[0] == '':  # e.g. {,3}
                     lang = lang.optional()
-                    _append(stack, functools.reduce(lambda x, y: fst.concatenate(x, y), [lang] * int(rng[1])))
+                    _append(stack, _repeat_exact(lang, int(rng[1])))
                 elif rng[1] == '':  # e.g. {3,}
-                    _append(stack, functools.reduce(lambda x, y: fst.concatenate(x, y), [lang] * int(rng[0])).concatenate(
-                        lang.kleene_closure()))
+                    _append(stack, _repeat_exact(lang, int(rng[0])).concatenate(lang.kleene_closure()))
                 else:  # e.g. {1,4}
-                    if int(rng[0] > rng[1]):
+                    m, n = int(rng[0]), int(rng[1])
+                    if m > n:
                         self._error_report(SyntaxError, "n must be greater than m in {m,n}", line_num, column)
-                    lang1 = functools.reduce(lambda x, y: fst.concatenate(x, y), [lang] * int(rng[0]))
-                    lang2 = functools.reduce(lambda x, y: fst.concatenate(x, y),
-                                             [lang.optional()] * (int(rng[1]) - int(rng[0])))
+                    lang1 = _repeat_exact(lang, m)
+                    lang2 = _repeat_exact(lang.optional(), n - m)
                     _append(stack, lang1.concatenate(lang2))
             elif op == 'CP':
                 arg2, arg1 = _pop(stack), _pop(stack)

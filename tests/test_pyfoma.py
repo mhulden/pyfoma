@@ -95,6 +95,36 @@ class TestFST(unittest.TestCase):
         f2 = FST.regex(r"'[NO\'UN]' '[VERB]'")
         self.assertEqual(f2.alphabet, {"[NO'UN]", "[VERB]"})
 
+    def test_range_quantifiers(self):
+        f0 = FST.regex("a{0}")
+        self.assertEqual(set(f0.generate("")), {""})
+        self.assertEqual(list(f0.generate("a")), [])
+
+        f1 = FST.regex("a{2,2}")
+        self.assertEqual(set(f1.generate("aa")), {"aa"})
+        self.assertEqual(list(f1.generate("a")), [])
+
+        f2 = FST.regex("a{,0}")
+        self.assertEqual(set(f2.generate("")), {""})
+        self.assertEqual(list(f2.generate("a")), [])
+
+        f3 = FST.regex("a{0,3}")
+        for n in range(0, 4):
+            s = "a" * n
+            self.assertEqual(set(f3.generate(s)), {s})
+        self.assertEqual(list(f3.generate("aaaa")), [])
+
+        f4 = FST.regex("a{2,10}")
+        self.assertEqual(set(f4.generate("aa")), {"aa"})
+        self.assertEqual(set(f4.generate("aaaaaaaaaa")), {"aaaaaaaaaa"})
+        self.assertEqual(list(f4.generate("a")), [])
+        self.assertEqual(list(f4.generate("aaaaaaaaaaa")), [])
+
+        with self.assertRaises(SyntaxError):
+            FST.regex("a{10,2}")
+        with self.assertRaises(SyntaxError):
+            FST.regex("a{12,3}")
+
     def test_complement(self):
         """Test the complement operator / method"""
         f1 = FST.regex("~a")
