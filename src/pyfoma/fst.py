@@ -981,7 +981,7 @@ class FST:
         if isinstance(word, str):
             word_tokenized = self.tokenize_against_alphabet(word)
         else:
-            word_tokenized = word
+            word_tokenized = [LITERAL_DOT if sym == "." else sym for sym in word]
         Q: List[Tuple[float, int, int, List[str], Optional[State]]] = []
         # output = []
         heapq.heappush(Q, (0.0, 0, next(cntr), [], self.initialstate))  # (cost, -pos, output, state)

@@ -118,6 +118,14 @@ class TestFST(unittest.TestCase):
         self.assertEqual(set(f_any.generate("x")), {"x"})
         self.assertEqual(set(f_any.generate(".")), {r"\."})
 
+    def test_literal_period_tokenized_input_parity(self):
+        f_lit = FST.regex(r"\.")
+        self.assertEqual(set(f_lit.generate(".")), {r"\."})
+        self.assertEqual(
+            list(f_lit.generate(["."], tokenize_outputs=True)),
+            [[r"\."]],
+        )
+
     def test_rewrite_literal_period_vs_wildcard(self):
         r_lit = FST.re(r"$^rewrite(\.:a / _ . #)")
         r_any = FST.re(r"$^rewrite(.:a / _ . #)")
