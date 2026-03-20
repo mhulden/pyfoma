@@ -1,4 +1,4 @@
-import heapq, json, itertools, operator, re as pyre
+import hashlib, heapq, json, itertools, operator, re as pyre
 from collections import deque, defaultdict
 from typing import Dict, Any, List, TextIO, Union, cast, Optional, Tuple, Sequence
 from os import PathLike
@@ -1987,6 +1987,75 @@ class FST:
     def arccount(self):
         """Counts number of transitions in FST."""
         return sum(len(list(s.all_transitions())) for s in self.states)
+
+    def hash(self) -> str:
+        """Return a stable SHA-256 hash of canonicalized FST structure.
+
+        The machine is first normalized with
+        ``trim().epsilon_remove().push_weights().determinize_as_dfa().minimize_as_dfa()``.
+        The result is then serialized by deterministic DFS order and hashed.
+
+        This is a structural hash of the normalized graph, not a general
+        transducer-equivalence test.
+        """
+        def _weight_repr(weight: float) -> str:
+            # Keep representation deterministic and normalize signed zero.
+            if weight == 0.0:
+                weight = 0.0
+            return float(weight).hex()
+
+        work = (
+            self.copy_mod()
+            .trim()
+            .epsilon_remove()
+            .push_weights()
+            .determinize_as_dfa()
+            .minimize_as_dfa()
+        )
+
+        state_ids: Dict[State, int] = {}
+        ordered_states: List[State] = []
+        stack = [work.initialstate]
+        while stack:
+            state = stack.pop()
+            if state in state_ids:
+                continue
+            state_ids[state] = len(ordered_states)
+            ordered_states.append(state)
+
+            outgoing = []
+            for label, arcs in state.transitions.items():
+                for arc in arcs:
+                    outgoing.append((label, arc.weight, arc.targetstate))
+            outgoing.sort(key=lambda item: (item[0], item[1]))
+
+            for _, _, target in reversed(outgoing):
+                if target not in state_ids:
+                    stack.append(target)
+
+        arcs = []
+        for state in ordered_states:
+            src = state_ids[state]
+            outgoing = []
+            for label, arcset in state.transitions.items():
+                for arc in arcset:
+                    outgoing.append((label, arc.weight, state_ids[arc.targetstate]))
+            outgoing.sort(key=lambda item: (item[0], item[1], item[2]))
+            for label, weight, dest in outgoing:
+                arcs.append([src, list(label), _weight_repr(weight), dest])
+
+        finals = sorted([state_ids[state], _weight_repr(state.finalweight)] for state in work.finalstates)
+
+        payload = {
+            "arity": work.arity(),
+            "alphabet": sorted(work.alphabet),
+            "states": len(ordered_states),
+            "initial": 0,
+            "finals": finals,
+            "arcs": arcs,
+        }
+        serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
     def is_deterministic(self):
         """Return True if the FST is deterministic in the DFA sense, False otherwise."""

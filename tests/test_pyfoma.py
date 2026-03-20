@@ -266,6 +266,26 @@ class TestFST(unittest.TestCase):
         f2 = FST()
         self.assertEqual(f2.alphabet, set())
 
+    def test_hash_canonical_structure(self):
+        f1 = FST.re("a|''")
+        f2 = FST.re("a?")
+        self.assertEqual(f1.hash(), f2.hash())
+
+        rgx1 = "$^restrict(a / b _ c)"
+        rgx2 = "~((~(.* b) a .*) | (.* a ~(c .*)))"
+        self.assertEqual(FST.re(rgx1).hash(), FST.re(rgx2).hash())
+
+        t1 = FST.re("a:x | b:y | '':z")
+        t2 = FST.fromdict(json.loads(json.dumps(t1.todict())))
+        self.assertEqual(t1.hash(), t2.hash())
+
+        t3 = FST.re("a:x | b:z | '':z")
+        self.assertNotEqual(t1.hash(), t3.hash())
+
+        w1 = FST.re("a<1.0>")
+        w2 = FST.re("a<2.0>")
+        self.assertNotEqual(w1.hash(), w2.hash())
+
     def test_to_regex_roundtrip_acceptor(self):
         probes = [
             "",
@@ -290,6 +310,7 @@ class TestFST(unittest.TestCase):
                     bool(list(fst.analyze(word))),
                     bool(list(rebuilt.analyze(word))),
                 )
+            self.assertEqual(fst.hash(), rebuilt.hash())
 
     def test_to_regex_roundtrip_two_tape(self):
         probes = [
@@ -319,6 +340,7 @@ class TestFST(unittest.TestCase):
                     set(fst.generate(word)),
                     set(rebuilt.generate(word)),
                 )
+            self.assertEqual(fst.hash(), rebuilt.hash())
 
     def test_to_regex_roundtrip_three_tape(self):
         fst = FST.re("a:b:c | d:e:f | 'x y':'u v':'w'")
@@ -330,6 +352,7 @@ class TestFST(unittest.TestCase):
             {tuple(seq) for _, seq in fst.words()},
             {tuple(seq) for _, seq in rebuilt.words()},
         )
+        self.assertEqual(fst.hash(), rebuilt.hash())
 
     def test_to_regex_rejects_multi_wildcard_labels(self):
         fst = FST.re(".:.")
