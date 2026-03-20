@@ -1,4 +1,4 @@
-from pyfoma.fst import FST, reverse, invert, minimize, determinize, ignore, rewrite, context_restrict, project, concatenate
+from pyfoma.fst import FST, reverse, invert, minimize, determinize, ignore, rewrite, context_restrict, project, concatenate, to_regex
 from pyfoma.paradigm import Paradigm
 from pyfoma.atomic import State, Transition
 

@@ -904,6 +904,19 @@ class FST:
                     src_state.add_transition(dest_state, labels, weight)
         return fst
 
+    def to_regex(
+        self,
+        *,
+        n: int = 1,
+        mode: str = "dm",
+        seed: Optional[int] = None,
+        best_k: int = 3,
+    ) -> str:
+        """Convert this FST into an equivalent regular expression string."""
+        from .stateelimination import to_regex as _to_regex
+
+        return _to_regex(self, n=n, mode=mode, seed=seed, best_k=best_k)
+
     # ==================
     # Rendering
     # ==================
@@ -2023,3 +2036,13 @@ def kleene_star(fst: 'FST'):
     
 def kleene_plus(fst: 'FST'):
     return fst.kleene_plus()
+
+def to_regex(
+    fst: 'FST',
+    *,
+    n: int = 1,
+    mode: str = "dm",
+    seed: Optional[int] = None,
+    best_k: int = 3,
+):
+    return fst.to_regex(n=n, mode=mode, seed=seed, best_k=best_k)

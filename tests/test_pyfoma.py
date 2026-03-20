@@ -266,6 +266,71 @@ class TestFST(unittest.TestCase):
         f2 = FST()
         self.assertEqual(f2.alphabet, set())
 
+    def test_to_regex_roundtrip_acceptor(self):
+        probes = [
+            "",
+            "a",
+            "ab",
+            "cd",
+            "cdef",
+            "abcdef",
+            "zz",
+            "xy",
+        ]
+        for expr in [
+            "(ab|c)d?",
+            "[a-z]* & $^restrict(a b / c d _ e f)",
+        ]:
+            fst = FST.re(expr)
+            regex = fst.to_regex(n=3, mode="dm", seed=7)
+            rebuilt = FST.re(regex)
+            for word in probes:
+                self.assertEqual(
+                    bool(list(fst.analyze(word))),
+                    bool(list(rebuilt.analyze(word))),
+                )
+
+    def test_to_regex_roundtrip_two_tape(self):
+        probes = [
+            "",
+            "a",
+            "b",
+            "q",
+            "cad",
+            "cadf",
+            "cccddeff",
+            "hgd",
+            "xyz",
+        ]
+        for expr in [
+            "a:x | b:y | '':z | q:''",
+            "[a-h]* @ $^rewrite(a:b / c _ d)",
+        ]:
+            fst = FST.re(expr)
+            regex = fst.to_regex(n=5, mode="dm", seed=11)
+            rebuilt = FST.re(regex)
+            for word in probes:
+                self.assertEqual(
+                    set(fst.generate(word)),
+                    set(rebuilt.generate(word)),
+                )
+
+    def test_to_regex_roundtrip_three_tape(self):
+        fst = FST.re("a:b:c | d:e:f | 'x y':'u v':'w'")
+        regex = fst.to_regex(n=4, mode="dm", seed=13)
+        rebuilt = FST.re(regex)
+        self.assertEqual(fst.arity(), 3)
+        self.assertEqual(rebuilt.arity(), 3)
+        self.assertEqual(
+            {tuple(seq) for _, seq in fst.words()},
+            {tuple(seq) for _, seq in rebuilt.words()},
+        )
+
+    def test_to_regex_rejects_wildcard_labels(self):
+        fst = FST.re("a:.")
+        with self.assertRaises(ValueError):
+            fst.to_regex()
+
 
 class TestSymbols(unittest.TestCase):
     """Test multi-character symbol feature"""
