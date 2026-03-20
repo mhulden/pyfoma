@@ -1514,25 +1514,28 @@ class FST:
 
     def context_restrict(self, *contexts, rewrite = False) -> 'FST':
         """Only allow self in the context L1 _ R1, or ... , or  L_n _ R_n."""
-        for fsm in itertools.chain.from_iterable(contexts):
+        touched = tuple(itertools.chain.from_iterable(contexts))
+        for fsm in touched:
             fsm.alphabet.add('@=@') # Add aux sym to contexts so they don't match .
-        fst = self.__copy__()
-        fst.alphabet.add('@=@')    # Same for self
-        if not rewrite:
-            cs = (FST.re("$lc '@=@' (.-'@=@')* '@=@' $rc", \
-                {'lc':lc.copy_mod().map_labels({'#': '@#@'}),\
-                'rc':rc.copy_mod().map_labels({'#': '@#@'})}) for lc, rc in contexts)
-        else:
-            cs = (FST.re("$lc '@=@' (.-'@=@')* '@=@' $rc", {'lc':lc, 'rc':rc}) for lc, rc in contexts)
-        cunion = functools.reduce(lambda x, y: x.union(y), cs).determinize().minimize()
-        r = FST.re("(.-'@=@')* '@=@' $c '@=@' (.-'@=@')* - ((.-'@=@')* $cunion (.-'@=@')*)",\
-                    {'c':fst, 'cunion':cunion})
-        r = r.map_labels({'@=@':''}).epsilon_remove().determinize_as_dfa().minimize()
-        for fsm in itertools.chain.from_iterable(contexts):
-            fsm.alphabet -= {'@=@'} # Remove aux syms from contexts
-        r = FST.re(".? (.-'@#@')* .? - $r", {'r': r})
-        newfst = r.map_labels({'@#@':''}).epsilon_remove().determinize_as_dfa().minimize()
-        return newfst
+        try:
+            fst = self.__copy__()
+            fst.alphabet.add('@=@')    # Same for self
+            if not rewrite:
+                cs = (FST.re("$lc '@=@' (.-'@=@')* '@=@' $rc", \
+                    {'lc':lc.copy_mod().map_labels({'#': '@#@'}),\
+                    'rc':rc.copy_mod().map_labels({'#': '@#@'})}) for lc, rc in contexts)
+            else:
+                cs = (FST.re("$lc '@=@' (.-'@=@')* '@=@' $rc", {'lc':lc, 'rc':rc}) for lc, rc in contexts)
+            cunion = functools.reduce(lambda x, y: x.union(y), cs).determinize().minimize()
+            r = FST.re("(.-'@=@')* '@=@' $c '@=@' (.-'@=@')* - ((.-'@=@')* $cunion (.-'@=@')*)",\
+                        {'c':fst, 'cunion':cunion})
+            r = r.map_labels({'@=@':''}).epsilon_remove().determinize_as_dfa().minimize()
+            r = FST.re(".? (.-'@#@')* .? - $r", {'r': r})
+            newfst = r.map_labels({'@#@':''}).epsilon_remove().determinize_as_dfa().minimize()
+            return newfst
+        finally:
+            for fsm in touched:
+                fsm.alphabet.discard('@=@') # Remove aux syms from contexts
 
     def project(self, dim = 0) -> 'FST':
         """Project fst. dim = -1 will get output proj regardless of # of tapes."""
