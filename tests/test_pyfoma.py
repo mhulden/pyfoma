@@ -100,6 +100,12 @@ class TestFST(unittest.TestCase):
         self.assertEqual(f1.alphabet, {"[NOUN]", "[VERB]"})
         f2 = FST.regex(r"'[NO\'UN]' '[VERB]'")
         self.assertEqual(f2.alphabet, {"[NO'UN]", "[VERB]"})
+        f4 = FST.regex(r"'\\'")
+        self.assertEqual(f4.alphabet, {"\\"})
+        self.assertEqual(set(f4.generate("\\")), {"\\"})
+        f5 = FST.regex(r"'a\\b'")
+        self.assertEqual(f5.alphabet, {r"a\b"})
+        self.assertEqual(set(f5.generate(r"a\b")), {r"a\b"})
         with self.assertRaises(SyntaxError):
             FST.regex("'ab")
         with self.assertRaises(SyntaxError):

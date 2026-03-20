@@ -240,7 +240,7 @@ class RegexParse:
                 value = r"\." if value == "." else value
             elif op == 'QUOTED':
                 op = 'SYMBOL'
-                value = value.replace("\\", "")
+                value = pyre.sub(r"\\(.)", r"\1", value)
                 if value == ".":
                     value = r"\."
             elif op == 'NEWLINE':
