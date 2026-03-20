@@ -280,6 +280,7 @@ class TestFST(unittest.TestCase):
         for expr in [
             "(ab|c)d?",
             "[a-z]* & $^restrict(a b / c d _ e f)",
+            "$^restrict(ab / cd _ ef)",
         ]:
             fst = FST.re(expr)
             regex = fst.to_regex(n=3, mode="dm", seed=7)
@@ -301,10 +302,14 @@ class TestFST(unittest.TestCase):
             "cccddeff",
             "hgd",
             "xyz",
+            "cad",
+            "ca",
         ]
         for expr in [
             "a:x | b:y | '':z | q:''",
             "[a-h]* @ $^rewrite(a:b / c _ d)",
+            "$^rewrite(a:b / c _ d)",
+            "$^rewrite(a:. / c_ #)",
         ]:
             fst = FST.re(expr)
             regex = fst.to_regex(n=5, mode="dm", seed=11)
@@ -326,8 +331,8 @@ class TestFST(unittest.TestCase):
             {tuple(seq) for _, seq in rebuilt.words()},
         )
 
-    def test_to_regex_rejects_wildcard_labels(self):
-        fst = FST.re("a:.")
+    def test_to_regex_rejects_multi_wildcard_labels(self):
+        fst = FST.re(".:.")
         with self.assertRaises(ValueError):
             fst.to_regex()
 

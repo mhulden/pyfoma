@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 import random
 
 
@@ -54,6 +54,16 @@ class Label(RE):
         if len(self.value) == 1:
             return _format_symbol(self.value[0])
         return ":".join(_format_symbol(sym) for sym in self.value)
+
+
+@dataclass(frozen=True)
+class LabelExpr(RE):
+    """A pre-rendered label regex expression."""
+
+    expr: str
+
+    def to_pyfoma(self, ctx_prec: int = 0) -> str:
+        return self.expr
 
 
 @dataclass(frozen=True)
@@ -173,7 +183,7 @@ def re_size(r: RE) -> int:
     """A simple syntactic size measure used for elimination ordering."""
     if isinstance(r, Empty):
         return 0
-    if isinstance(r, (Eps, Label)):
+    if isinstance(r, (Eps, Label, LabelExpr)):
         return 1
     if isinstance(r, Star):
         return 1 + re_size(r.r)
@@ -217,6 +227,79 @@ def state_weight(R: List[List[RE]], q: int, active: List[bool]) -> int:
     return (in_size * outgoing) + (out_size * incoming) + (loop_size * incoming * outgoing)
 
 
+def _symbol_union_expr(symbols: List[str]) -> str:
+    rendered = [_format_symbol(sym) for sym in symbols]
+    if not rendered:
+        return "'' - ''"
+    if len(rendered) == 1:
+        return rendered[0]
+    return "( " + " | ".join(rendered) + " )"
+
+
+def _template_sort_key(item):
+    pos, fixed = item
+    return (pos, tuple("" if sym is None else sym for sym in fixed))
+
+
+def _labels_to_re(labels: Set[Tuple[str, ...]], sigma: Set[str]) -> RE:
+    """Convert all labels between one state-pair into one RE edge label."""
+    terms: RE = _EMPTY
+    by_arity: Dict[int, Set[Tuple[str, ...]]] = {}
+    for label in labels:
+        by_arity.setdefault(len(label), set()).add(label)
+
+    for arity in sorted(by_arity):
+        group = by_arity[arity]
+        concrete: Set[Tuple[str, ...]] = set()
+        wildcard_templates = {}
+
+        for label in group:
+            if all(sym == "" for sym in label):
+                terms = union(terms, _EPS)
+                continue
+
+            dot_positions = [idx for idx, sym in enumerate(label) if sym == "."]
+            if not dot_positions:
+                concrete.add(label)
+                continue
+            if len(dot_positions) > 1:
+                raise ValueError(
+                    "to_regex currently supports wildcard labels with at most one '.' per transition label."
+                )
+            pos = dot_positions[0]
+            fixed = tuple(sym if idx != pos else None for idx, sym in enumerate(label))
+            wildcard_templates[(pos, fixed)] = True
+
+        covered_concrete: Set[Tuple[str, ...]] = set()
+        for pos, fixed in sorted(wildcard_templates.keys(), key=_template_sort_key):
+            allowed_in_sigma: Set[str] = set()
+            for label in concrete:
+                if all(idx == pos or label[idx] == fixed[idx] for idx in range(arity)):
+                    wildcard_side = label[pos]
+                    if wildcard_side != "":
+                        covered_concrete.add(label)
+                    if wildcard_side in sigma:
+                        allowed_in_sigma.add(wildcard_side)
+
+            excluded = sorted(sigma - allowed_in_sigma)
+            wildcard_component = "." if not excluded else f"( . - {_symbol_union_expr(excluded)} )"
+            components = []
+            for idx in range(arity):
+                if idx == pos:
+                    components.append(wildcard_component)
+                else:
+                    components.append(_format_symbol(fixed[idx]))
+            wildcard_expr = components[0] if arity == 1 else ":".join(components)
+            terms = union(terms, LabelExpr(wildcard_expr))
+
+        for label in sorted(concrete):
+            if label in covered_concrete:
+                continue
+            terms = union(terms, Label(label))
+
+    return terms
+
+
 def _build_gnfa(fst):
     """Build GNFA adjacency matrix R from a pyfoma FST object."""
     statenums = fst.number_unnamed_states(force=True)
@@ -232,21 +315,22 @@ def _build_gnfa(fst):
     start = n
     accept = n + 1
     total = n + 2
+    sigma = {sym for sym in fst.alphabet if sym not in {".", ""}}
 
     R: List[List[RE]] = [[_EMPTY for _ in range(total)] for __ in range(total)]
+    edge_labels: Dict[Tuple[int, int], Set[Tuple[str, ...]]] = {}
 
     for i in range(n):
         state = num_to_state[i]
         for label, tset in state.transitions.items():
             if not isinstance(label, tuple) or len(label) == 0:
                 raise ValueError(f"to_regex expects tuple labels with arity >= 1, got {label!r}")
-            if any(sym == "." for sym in label):
-                raise ValueError("to_regex simplification: FST must not contain '.' wildcard arcs.")
-
-            label_re: RE = _EPS if all(sym == "" for sym in label) else Label(label)
             for transition in tset:
                 j = statenums[id(transition.targetstate)]
-                R[i][j] = union(R[i][j], label_re)
+                edge_labels.setdefault((i, j), set()).add(label)
+
+    for (i, j), labels in edge_labels.items():
+        R[i][j] = union(R[i][j], _labels_to_re(labels, sigma))
 
     R[start][start_num] = union(R[start][start_num], _EPS)
     for final in finals:
@@ -343,7 +427,7 @@ def to_regex(
 
     Assumptions:
       - tuple labels with arity >= 1
-      - no '.' wildcard arcs
+      - wildcard labels may contain at most one '.' per transition label
       - weights are ignored
     """
     if n < 1:
