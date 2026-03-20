@@ -107,6 +107,27 @@ class TestFST(unittest.TestCase):
         f3 = FST.regex("'''")
         self.assertEqual(f3.alphabet, {"'"})
 
+    def test_literal_period_symbol(self):
+        f_lit_esc = FST.regex(r"\.")
+        f_lit_q = FST.regex("'.'")
+        self.assertEqual(set(f_lit_esc.generate(".")), {r"\."})
+        self.assertEqual(set(f_lit_q.generate(".")), {r"\."})
+        self.assertEqual(list(f_lit_esc.generate("a")), [])
+
+        f_any = FST.regex(".")
+        self.assertEqual(set(f_any.generate("x")), {"x"})
+        self.assertEqual(set(f_any.generate(".")), {r"\."})
+
+    def test_rewrite_literal_period_vs_wildcard(self):
+        r_lit = FST.re(r"$^rewrite(\.:a / _ . #)")
+        r_any = FST.re(r"$^rewrite(.:a / _ . #)")
+
+        self.assertEqual(set(r_lit.generate("abababa")), {"abababa"})
+        self.assertEqual(set(r_lit.generate("ab.c")), {"abac"})
+
+        self.assertEqual(set(r_any.generate("abxc")), {"abac"})
+        self.assertEqual(set(r_any.generate("ab.c")), {"abac"})
+
     def test_range_quantifiers(self):
         f0 = FST.regex("a{0}")
         self.assertEqual(set(f0.generate("")), {""})

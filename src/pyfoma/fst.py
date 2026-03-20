@@ -12,6 +12,8 @@ from .flag import FlagStringFilter, FlagOp
 from .atomic import State, Transition, all_transitions
 from ._private import util, partition_refinement
 
+LITERAL_DOT = r"\."
+
 
 def harmonize_alphabet(func):
     """Transition wildcard (.) harmonization for binary FST operations."""
@@ -473,7 +475,7 @@ class FST:
             sigmamap['@_EPSILON_SYMBOL_@'] = 0
         sigmastr = ["##sigma##"]
         for name, num in sorted(list(sigmamap.items()), key = lambda x: int(x[1])):
-            sigmastr.append(f"{num} {name}")
+            sigmastr.append(f"{num} {'.' if name == LITERAL_DOT else name}")
 
         statestr = ["##states##"]
         weightstr = ["##weights##"]
@@ -967,6 +969,11 @@ class FST:
            combinations are filtered out. By default, flags are
            treated as epsilons in the input. print_flags toggels whether flag
            diacritics are printed in the output. """
+        def _render_sym(sym: str) -> str:
+            if sym == LITERAL_DOT:
+                return r"\."
+            return sym
+
         if len(self.finalstates) == 0:
             return
         IN, OUT = [-1, 0] if inverse else [0, -1]  # Tuple positions for input, output
@@ -986,7 +993,10 @@ class FST:
             if state == None and -negpos == len(word_tokenized) and (not obey_flags or flag_filter(output)):
                 if not print_flags:
                     output = FlagOp.filter_flags(output)
-                yield_output = ''.join(output) if not tokenize_outputs else output
+                if tokenize_outputs:
+                    yield_output = output
+                else:
+                    yield_output = ''.join(_render_sym(sym) for sym in output)
                 if weights == False:
                     yield yield_output
                 else:
@@ -1042,11 +1052,18 @@ class FST:
         start = 0
         while start < len(word):
             t = word[start]  # Default is length 1 token unless we find a longer one
+            consumed = 1
             for length in range(1, len(word) - start + 1):  # TODO: limit to max length
-                if word[start:start + length] in self.alphabet:  # of syms in alphabet
-                    t = word[start:start + length]
+                candidate = word[start:start + length]
+                if candidate == ".":
+                    candidate = LITERAL_DOT
+                if candidate in self.alphabet:  # of syms in alphabet
+                    t = candidate
+                    consumed = length
+            if t == ".":
+                t = LITERAL_DOT
             tokens.append(t)
-            start += len(t)
+            start += consumed
         return tokens
 
     # ==================
@@ -1451,7 +1468,7 @@ class FST:
 
     def ignore(self, fst2: 'FST') -> 'FST':
         """A, ignoring intervening instances of B."""
-        new_fst = FST.re("$^output($A @ ('.'|'':$B)*)", {'A': self, 'B': fst2})
+        new_fst = FST.re("$^output($A @ (.|'':$B)*)", {'A': self, 'B': fst2})
         return new_fst
 
     def rewrite(self, *contexts, **flags) -> 'FST':

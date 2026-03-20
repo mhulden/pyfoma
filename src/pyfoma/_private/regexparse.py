@@ -235,9 +235,14 @@ class RegexParse:
             column = mo.start() - line_start
             if op == 'SKIPWS':
                 continue
-            elif op == 'ESCAPED' or op == 'QUOTED':
+            elif op == 'ESCAPED':
+                op = 'SYMBOL'
+                value = r"\." if value == "." else value
+            elif op == 'QUOTED':
                 op = 'SYMBOL'
                 value = value.replace("\\", "")
+                if value == ".":
+                    value = r"\."
             elif op == 'NEWLINE':
                 line_start = mo.end()
                 line_num += 1
