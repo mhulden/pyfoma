@@ -336,6 +336,67 @@ class TestFST(unittest.TestCase):
         with self.assertRaises(ValueError):
             fst.to_regex()
 
+    def test_to_regex_local_simplify_optional_plus(self):
+        fst_opt = FST.re("a|''")
+        regex_unsimplified = fst_opt.to_regex(simplify=False)
+        regex_simplified = fst_opt.to_regex(simplify=True)
+        self.assertNotIn("?", regex_unsimplified)
+        self.assertIn("?", regex_simplified)
+        rebuilt = FST.re(regex_simplified)
+        for word in ["", "a", "aa", "b"]:
+            self.assertEqual(bool(list(fst_opt.analyze(word))), bool(list(rebuilt.analyze(word))))
+
+        fst_plus = FST.re("a a*")
+        regex_plus = fst_plus.to_regex(simplify=True)
+        self.assertIn("+", regex_plus)
+        rebuilt_plus = FST.re(regex_plus)
+        for word in ["", "a", "aa", "aaa", "b"]:
+            self.assertEqual(bool(list(fst_plus.analyze(word))), bool(list(rebuilt_plus.analyze(word))))
+
+        fst_cls = FST.re("(a|b)*")
+        regex_cls = fst_cls.to_regex(simplify=True)
+        self.assertIn("[ab]*", regex_cls)
+        rebuilt_cls = FST.re(regex_cls)
+        for word in ["", "a", "b", "ab", "ba", "abba", "c"]:
+            self.assertEqual(bool(list(fst_cls.analyze(word))), bool(list(rebuilt_cls.analyze(word))))
+
+        fst_opt_cls = FST.re("[abc]?")
+        regex_opt_cls = fst_opt_cls.to_regex(simplify=True)
+        self.assertIn("[abc]?", regex_opt_cls)
+        rebuilt_opt_cls = FST.re(regex_opt_cls)
+        for word in ["", "a", "b", "c", "ab", "d"]:
+            self.assertEqual(bool(list(fst_opt_cls.analyze(word))), bool(list(rebuilt_opt_cls.analyze(word))))
+
+        fst_mix = FST.re("[abcd]? x* y+ [efg]+")
+        regex_mix = fst_mix.to_regex(simplify=True)
+        self.assertIn("[abcdx]", regex_mix)
+        rebuilt_mix = FST.re(regex_mix)
+        for word in ["yef", "xyef", "ayyefg", "dxxxygg", "", "ef"]:
+            self.assertEqual(bool(list(fst_mix.analyze(word))), bool(list(rebuilt_mix.analyze(word))))
+
+        fst_compl = FST.re("[abcd]* & ~(.* ab .*)")
+        regex_compl = fst_compl.to_regex(simplify=True)
+        self.assertNotIn("a+?", regex_compl)
+        self.assertIn("a*", regex_compl)
+        rebuilt_compl = FST.re(regex_compl)
+        for word in ["", "a", "aa", "aba", "abb", "acda", "dddc", "abca"]:
+            self.assertEqual(bool(list(fst_compl.analyze(word))), bool(list(rebuilt_compl.analyze(word))))
+
+        fst_diff = FST.re(".* - (.* (a b | b a) .*)")
+        regex_diff = fst_diff.to_regex(simplify=True)
+        self.assertNotIn("a+ )?", regex_diff)
+        self.assertNotIn("b+ )?", regex_diff)
+        self.assertIn("a*", regex_diff)
+        self.assertIn("b*", regex_diff)
+        rebuilt_diff = FST.re(regex_diff)
+        for word in ["", "a", "b", "aa", "bb", "ab", "ba", "aba", "bbb", "aab", "baa"]:
+            self.assertEqual(bool(list(fst_diff.analyze(word))), bool(list(rebuilt_diff.analyze(word))))
+
+    def test_to_regex_simplify_level_validation(self):
+        fst = FST.re("a")
+        with self.assertRaises(ValueError):
+            fst.to_regex(simplify_level="aggressive")
+
 
 class TestSymbols(unittest.TestCase):
     """Test multi-character symbol feature"""

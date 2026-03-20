@@ -911,11 +911,23 @@ class FST:
         mode: str = "dm",
         seed: Optional[int] = None,
         best_k: int = 3,
+        simplify: bool = True,
+        simplify_level: str = "local",
+        max_simplify_steps: int = 200,
     ) -> str:
         """Convert this FST into an equivalent regular expression string."""
         from .stateelimination import to_regex as _to_regex
 
-        return _to_regex(self, n=n, mode=mode, seed=seed, best_k=best_k)
+        return _to_regex(
+            self,
+            n=n,
+            mode=mode,
+            seed=seed,
+            best_k=best_k,
+            simplify=simplify,
+            simplify_level=simplify_level,
+            max_simplify_steps=max_simplify_steps,
+        )
 
     # ==================
     # Rendering
@@ -2044,5 +2056,16 @@ def to_regex(
     mode: str = "dm",
     seed: Optional[int] = None,
     best_k: int = 3,
+    simplify: bool = True,
+    simplify_level: str = "local",
+    max_simplify_steps: int = 200,
 ):
-    return fst.to_regex(n=n, mode=mode, seed=seed, best_k=best_k)
+    return fst.to_regex(
+        n=n,
+        mode=mode,
+        seed=seed,
+        best_k=best_k,
+        simplify=simplify,
+        simplify_level=simplify_level,
+        max_simplify_steps=max_simplify_steps,
+    )

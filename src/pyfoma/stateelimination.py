@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Callable, Dict, List, Optional, Set, Tuple
 import random
 
 
@@ -63,7 +63,33 @@ class LabelExpr(RE):
     expr: str
 
     def to_pyfoma(self, ctx_prec: int = 0) -> str:
+        if ctx_prec >= _PREC_STAR and any(op in self.expr for op in (":", "|", "-")):
+            return f"( {self.expr} )"
         return self.expr
+
+
+@dataclass(frozen=True)
+class OptionalRE(RE):
+    r: RE
+
+    def to_pyfoma(self, ctx_prec: int = 0) -> str:
+        inner = self.r.to_pyfoma(_PREC_STAR)
+        out = f"{inner}?"
+        if ctx_prec > _PREC_STAR:
+            return f"( {out} )"
+        return out
+
+
+@dataclass(frozen=True)
+class PlusRE(RE):
+    r: RE
+
+    def to_pyfoma(self, ctx_prec: int = 0) -> str:
+        inner = self.r.to_pyfoma(_PREC_STAR)
+        out = f"{inner}+"
+        if ctx_prec > _PREC_STAR:
+            return f"( {out} )"
+        return out
 
 
 @dataclass(frozen=True)
@@ -105,6 +131,13 @@ class UnionRE(RE):
 
 _EMPTY = Empty()
 _EPS = Eps()
+
+
+@dataclass(frozen=True)
+class RewriteRule:
+    name: str
+    phase: str
+    fn: Callable[[RE], Optional[RE]]
 
 
 def _is_empty(r: RE) -> bool:
@@ -185,6 +218,8 @@ def re_size(r: RE) -> int:
         return 0
     if isinstance(r, (Eps, Label, LabelExpr)):
         return 1
+    if isinstance(r, (OptionalRE, PlusRE)):
+        return 1 + re_size(r.r)
     if isinstance(r, Star):
         return 1 + re_size(r.r)
     if isinstance(r, UnionRE):
@@ -298,6 +333,314 @@ def _labels_to_re(labels: Set[Tuple[str, ...]], sigma: Set[str]) -> RE:
             terms = union(terms, Label(label))
 
     return terms
+
+
+def _from_parts(parts: Tuple[RE, ...]) -> RE:
+    if len(parts) == 0:
+        return _EPS
+    if len(parts) == 1:
+        return parts[0]
+    return ConcatRE(parts)
+
+
+def _as_parts(r: RE) -> Tuple[RE, ...]:
+    if isinstance(r, ConcatRE):
+        return r.parts
+    return (r,)
+
+
+def _score_key(r: RE) -> Tuple[int, int, str]:
+    rendered = r.to_pyfoma(0)
+    return (re_size(r), len(rendered), rendered)
+
+
+def _rule_alt_eps_to_optional(node: RE) -> Optional[RE]:
+    if not isinstance(node, UnionRE):
+        return None
+    non_eps = [alt for alt in node.alts if not isinstance(alt, Eps)]
+    if len(non_eps) == len(node.alts):
+        return None
+    base = _EMPTY
+    for alt in non_eps:
+        base = union(base, alt)
+    if isinstance(base, Empty):
+        return _EPS
+    return OptionalRE(base)
+
+
+def _rule_concat_to_plus_left(node: RE) -> Optional[RE]:
+    if not isinstance(node, ConcatRE):
+        return None
+    parts = list(node.parts)
+    for i in range(len(parts) - 1):
+        if isinstance(parts[i + 1], Star) and parts[i] == parts[i + 1].r:
+            new_parts = parts[:i] + [PlusRE(parts[i])] + parts[i + 2:]
+            return concat(*new_parts)
+    return None
+
+
+def _rule_concat_to_plus_right(node: RE) -> Optional[RE]:
+    if not isinstance(node, ConcatRE):
+        return None
+    parts = list(node.parts)
+    for i in range(len(parts) - 1):
+        if isinstance(parts[i], Star) and parts[i].r == parts[i + 1]:
+            new_parts = parts[:i] + [PlusRE(parts[i + 1])] + parts[i + 2:]
+            return concat(*new_parts)
+    return None
+
+
+def _rule_union_plus_or_star_with_eps(node: RE) -> Optional[RE]:
+    if not isinstance(node, UnionRE):
+        return None
+    if len(node.alts) != 2:
+        return None
+    if not any(isinstance(alt, Eps) for alt in node.alts):
+        return None
+    other = next(alt for alt in node.alts if not isinstance(alt, Eps))
+    if isinstance(other, Star):
+        return other
+    if isinstance(other, PlusRE):
+        return Star(other.r)
+    return None
+
+
+def _rule_nested_closure_optional_plus(node: RE) -> Optional[RE]:
+    if isinstance(node, Star):
+        if isinstance(node.r, Star):
+            return node.r
+        if isinstance(node.r, OptionalRE):
+            return Star(node.r.r)
+        if isinstance(node.r, PlusRE):
+            return Star(node.r.r)
+    if isinstance(node, OptionalRE) and isinstance(node.r, OptionalRE):
+        return node.r
+    if isinstance(node, OptionalRE):
+        if isinstance(node.r, PlusRE):
+            return Star(node.r.r)
+        if isinstance(node.r, Star):
+            return node.r
+    if isinstance(node, PlusRE):
+        if isinstance(node.r, PlusRE):
+            return node.r
+        if isinstance(node.r, Star):
+            return node.r
+    return None
+
+
+def _charclass_escape(sym: str) -> str:
+    if sym in {"\\", "]", "[", "-", "^"}:
+        return "\\" + sym
+    return sym
+
+
+def _union_to_charclass(union_node: RE) -> Optional[str]:
+    if not isinstance(union_node, UnionRE):
+        return None
+    chars: Set[str] = set()
+    for alt in union_node.alts:
+        if not isinstance(alt, Label):
+            return None
+        if len(alt.value) != 1:
+            return None
+        sym = alt.value[0]
+        if sym in {"", "."}:
+            return None
+        if len(sym) != 1:
+            return None
+        chars.add(sym)
+    if len(chars) < 2:
+        return None
+    return "[" + "".join(_charclass_escape(ch) for ch in sorted(chars)) + "]"
+
+
+def _rule_star_union_to_charclass(node: RE) -> Optional[RE]:
+    if not isinstance(node, Star):
+        return None
+    cls = _union_to_charclass(node.r)
+    if cls is None:
+        return None
+    return LabelExpr(cls + "*")
+
+
+def _rule_union_to_charclass(node: RE) -> Optional[RE]:
+    cls = _union_to_charclass(node)
+    if cls is None:
+        return None
+    return LabelExpr(cls)
+
+
+def _rule_optional_union_to_charclass(node: RE) -> Optional[RE]:
+    if not isinstance(node, OptionalRE):
+        return None
+    cls = _union_to_charclass(node.r)
+    if cls is None:
+        return None
+    return LabelExpr(cls + "?")
+
+
+def _rule_plus_union_to_charclass(node: RE) -> Optional[RE]:
+    if not isinstance(node, PlusRE):
+        return None
+    cls = _union_to_charclass(node.r)
+    if cls is None:
+        return None
+    return LabelExpr(cls + "+")
+
+
+def _rule_optional_union_pluses_to_union_stars(node: RE) -> Optional[RE]:
+    if not isinstance(node, OptionalRE):
+        return None
+    if not isinstance(node.r, UnionRE):
+        return None
+
+    out = _EMPTY
+    for alt in node.r.alts:
+        if isinstance(alt, PlusRE):
+            out = union(out, star(alt.r))
+            continue
+        if isinstance(alt, Star):
+            out = union(out, alt)
+            continue
+        return None
+
+    return out
+
+
+def _rule_factor_common_prefix(node: RE) -> Optional[RE]:
+    if not isinstance(node, UnionRE) or len(node.alts) < 2:
+        return None
+    alts = list(node.alts)
+    for i in range(len(alts) - 1):
+        for j in range(i + 1, len(alts)):
+            p1 = _as_parts(alts[i])
+            p2 = _as_parts(alts[j])
+            k = 0
+            while k < len(p1) and k < len(p2) and p1[k] == p2[k]:
+                k += 1
+            if k == 0:
+                continue
+            prefix = p1[:k]
+            rest1 = _from_parts(p1[k:])
+            rest2 = _from_parts(p2[k:])
+            factored = concat(*prefix, union(rest1, rest2))
+            new_alts = alts[:]
+            new_alts[i] = factored
+            del new_alts[j]
+            out = _EMPTY
+            for alt in new_alts:
+                out = union(out, alt)
+            return out
+    return None
+
+
+def _rule_factor_common_suffix(node: RE) -> Optional[RE]:
+    if not isinstance(node, UnionRE) or len(node.alts) < 2:
+        return None
+    alts = list(node.alts)
+    for i in range(len(alts) - 1):
+        for j in range(i + 1, len(alts)):
+            p1 = _as_parts(alts[i])
+            p2 = _as_parts(alts[j])
+            k = 0
+            while k < len(p1) and k < len(p2) and p1[-1 - k] == p2[-1 - k]:
+                k += 1
+            if k == 0:
+                continue
+            suffix = p1[len(p1) - k:]
+            rest1 = _from_parts(p1[:len(p1) - k])
+            rest2 = _from_parts(p2[:len(p2) - k])
+            factored = concat(union(rest1, rest2), *suffix)
+            new_alts = alts[:]
+            new_alts[i] = factored
+            del new_alts[j]
+            out = _EMPTY
+            for alt in new_alts:
+                out = union(out, alt)
+            return out
+    return None
+
+
+_LOCAL_RULES: Tuple[RewriteRule, ...] = (
+    RewriteRule("alt_eps_to_optional", "local", _rule_alt_eps_to_optional),
+    RewriteRule("concat_left_to_plus", "local", _rule_concat_to_plus_left),
+    RewriteRule("concat_right_to_plus", "local", _rule_concat_to_plus_right),
+    RewriteRule("union_plus_or_star_with_eps", "local", _rule_union_plus_or_star_with_eps),
+    RewriteRule("nested_closure_optional_plus", "local", _rule_nested_closure_optional_plus),
+    RewriteRule("star_union_to_charclass", "local", _rule_star_union_to_charclass),
+    RewriteRule("union_to_charclass", "local", _rule_union_to_charclass),
+    RewriteRule("optional_union_to_charclass", "local", _rule_optional_union_to_charclass),
+    RewriteRule("plus_union_to_charclass", "local", _rule_plus_union_to_charclass),
+    RewriteRule(
+        "optional_union_pluses_to_union_stars",
+        "local",
+        _rule_optional_union_pluses_to_union_stars,
+    ),
+    RewriteRule("factor_common_prefix", "local", _rule_factor_common_prefix),
+    RewriteRule("factor_common_suffix", "local", _rule_factor_common_suffix),
+)
+
+
+def _apply_rule_first(node: RE, rule_fn: Callable[[RE], Optional[RE]]) -> Tuple[RE, bool]:
+    rewritten = rule_fn(node)
+    if rewritten is not None and rewritten != node:
+        return rewritten, True
+
+    if isinstance(node, Star):
+        child, changed = _apply_rule_first(node.r, rule_fn)
+        if changed:
+            return star(child), True
+        return node, False
+    if isinstance(node, OptionalRE):
+        child, changed = _apply_rule_first(node.r, rule_fn)
+        if changed:
+            return OptionalRE(child), True
+        return node, False
+    if isinstance(node, PlusRE):
+        child, changed = _apply_rule_first(node.r, rule_fn)
+        if changed:
+            return PlusRE(child), True
+        return node, False
+    if isinstance(node, ConcatRE):
+        parts = list(node.parts)
+        for i, part in enumerate(parts):
+            child, changed = _apply_rule_first(part, rule_fn)
+            if changed:
+                parts[i] = child
+                return concat(*parts), True
+        return node, False
+    if isinstance(node, UnionRE):
+        alts = list(node.alts)
+        for i, alt in enumerate(alts):
+            child, changed = _apply_rule_first(alt, rule_fn)
+            if changed:
+                alts[i] = child
+                out = _EMPTY
+                for candidate in alts:
+                    out = union(out, candidate)
+                return out, True
+        return node, False
+    return node, False
+
+
+def _simplify_local(root: RE, max_steps: int = 200) -> Tuple[RE, List[str]]:
+    current = root
+    applied: List[str] = []
+    for _ in range(max_steps):
+        base_score = _score_key(current)
+        improved = False
+        for rule in _LOCAL_RULES:
+            candidate, changed = _apply_rule_first(current, rule.fn)
+            if not changed:
+                continue
+            if _score_key(candidate) < base_score:
+                current = candidate
+                applied.append(rule.name)
+                improved = True
+                break
+        if not improved:
+            break
+    return current, applied
 
 
 def _build_gnfa(fst):
@@ -422,13 +765,55 @@ def to_regex(
     mode: str = "dm",
     seed: Optional[int] = None,
     best_k: int = 3,
+    simplify: bool = True,
+    simplify_level: str = "local",
+    max_simplify_steps: int = 200,
 ) -> str:
     """Convert a pyfoma FST into an equivalent pyfoma regex string.
 
-    Assumptions:
-      - tuple labels with arity >= 1
-      - wildcard labels may contain at most one '.' per transition label
-      - weights are ignored
+    This uses GNFA-style state elimination with restart strategies. Before
+    elimination, the input machine is normalized with the same core pipeline
+    used by the regex compiler:
+
+      ``trim().epsilon_remove().push_weights().determinize_as_dfa().minimize_as_dfa()``
+
+    The resulting machine is then converted to a GNFA matrix and eliminated
+    into one regex AST, which is rendered as a pyfoma regex string.
+
+    Args:
+      fst:
+        Input FST (acceptor or transducer; tuple labels with arity >= 1).
+      n:
+        Number of elimination runs. The shortest rendered regex is returned.
+      mode:
+        Elimination strategy.
+          - ``"dm"``: Delgado-Morais repeated state-weight heuristic.
+            Run 0 is deterministic; runs 1..n-1 use randomized best-k tie
+            breaking when ``n > 1``.
+          - ``"random"``: purely random elimination order on every run.
+      seed:
+        Optional random seed for reproducible restart sampling.
+      best_k:
+        For randomized DM runs, sample uniformly from the ``best_k`` lowest
+        weighted candidate states at each elimination step.
+      simplify:
+        If ``True``, apply local post-elimination rewrite rules to reduce
+        output size.
+      simplify_level:
+        Simplification profile selector. Currently only ``"local"`` is
+        implemented.
+      max_simplify_steps:
+        Hard cap on local simplification rewrite steps.
+
+    Returns:
+      A pyfoma-compatible regular expression string.
+
+    Notes / current limits:
+      - Transition wildcard support allows at most one ``'.'`` per transition
+        label tuple in ``to_regex`` output construction.
+      - Weights are currently not encoded in the emitted regex; they are only
+        handled during normalization to keep determinization/minimization
+        behavior aligned with the compiler path.
     """
     if n < 1:
         raise ValueError("to_regex: n must be >= 1")
@@ -436,10 +821,19 @@ def to_regex(
         raise ValueError("to_regex: mode must be 'dm' or 'random'")
     if best_k < 1:
         raise ValueError("to_regex: best_k must be >= 1")
+    if simplify_level != "local":
+        raise ValueError("to_regex: only simplify_level='local' is currently implemented")
+    if max_simplify_steps < 0:
+        raise ValueError("to_regex: max_simplify_steps must be >= 0")
 
-    work = fst.copy_mod().trim().epsilon_remove().trim()
-    if work.arity() == 1:
-        work = work.determinize_unweighted().minimize().trim()
+    work = (
+        fst.copy_mod()
+        .trim()
+        .epsilon_remove()
+        .push_weights()
+        .determinize_as_dfa()
+        .minimize_as_dfa()
+    )
 
     R0, start, accept = _build_gnfa(work)
     best_str: Optional[str] = None
@@ -447,10 +841,14 @@ def to_regex(
 
     if mode == "dm":
         re0 = _eliminate_once(R0, start, accept, mode="dm", rng=None, best_k=best_k)
+        if simplify:
+            re0, _ = _simplify_local(re0, max_steps=max_simplify_steps)
         best_str = re0.to_pyfoma(0)
         for _run in range(1, n):
             rng = random.Random(base_rng.randint(0, 2**31 - 1))
             rerun = _eliminate_once(R0, start, accept, mode="dm", rng=rng, best_k=best_k)
+            if simplify:
+                rerun, _ = _simplify_local(rerun, max_steps=max_simplify_steps)
             candidate = rerun.to_pyfoma(0)
             if best_str is None or len(candidate) < len(best_str):
                 best_str = candidate
@@ -458,6 +856,8 @@ def to_regex(
         for _run in range(n):
             rng = random.Random(base_rng.randint(0, 2**31 - 1))
             rerun = _eliminate_once(R0, start, accept, mode="random", rng=rng, best_k=best_k)
+            if simplify:
+                rerun, _ = _simplify_local(rerun, max_steps=max_simplify_steps)
             candidate = rerun.to_pyfoma(0)
             if best_str is None or len(candidate) < len(best_str):
                 best_str = candidate
