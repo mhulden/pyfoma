@@ -600,6 +600,7 @@ FST.re("((a:b)<1.0>|(b:a)<1.0>|[^ab])*").view()
 # |\$\^input(A)  | A.1, A.u | Input-side projection | `$^input($T)` | 
 # |\$\^output(A) | A.2, A.l | Output-side projection | `$^output($T)` |
 # |\$\^project(A, dim = n) | N/A | Arbitrary projection | `$^project($T, dim = 3)` |
+# |\$\^shuffle(A, B) | A <> B | Shuffle two FSTs | `$^shuffle(abcd, 123)` |
 # |A:B           | A:B, A.x.B | Cross-product | `(cat):(gato)` |
 # |A:?B           | N/A       | Optional cross-product | `(cat):?(gato)` |
 # |A@B           | A .o. B    | Composition   | `a:b @ b:c` |
