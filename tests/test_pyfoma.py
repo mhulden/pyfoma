@@ -142,6 +142,42 @@ class TestFST(unittest.TestCase):
         self.assertEqual(set(r_any.generate("abxc")), {"abac"})
         self.assertEqual(set(r_any.generate("ab.c")), {"abac"})
 
+    def test_wildcard_cross_product_semantics(self):
+        f_any = FST.re(".:.")
+        self.assertEqual(set(f_any.generate("x")), {"x", "."})
+
+        f_nonid = FST.re(".:. - .")
+        self.assertEqual(set(f_nonid.generate("x")), {"."})
+
+        defs = {
+            "ab": FST.re("a|b"),
+            "nonid": f_nonid,
+        }
+        sub = FST.re("$ab @ $nonid", defs)
+        self.assertEqual(set(sub.generate("a")), {"b", "."})
+        self.assertEqual(set(sub.generate("b")), {"a", "."})
+
+    def test_foma_wildcard_roundtrip(self):
+        f_id = FST.re(".")
+        f_nonid = FST.re(".:. - .")
+
+        rt_id = FST.from_fomastring(f_id.to_fomastring())
+        rt_nonid = FST.from_fomastring(f_nonid.to_fomastring())
+
+        self.assertEqual(set(rt_id.generate("x")), {"x"})
+        self.assertEqual(set(rt_nonid.generate("x")), {"."})
+
+    def test_spell_corrector_unknown_symbols(self):
+        fsts = {}
+        fsts["changeone"] = FST.re(".* ( (.:. - .) | .:'' | '':. ) .*")
+        fsts["lexicon"] = FST.re("cat|dog|mouse|rat")
+        fsts["correct"] = FST.re("$lexicon @ $changeone", fsts)
+
+        self.assertEqual(set(fsts["correct"].analyze("house")), {"mouse"})
+        self.assertEqual(set(fsts["correct"].analyze("rouse")), {"mouse"})
+        self.assertEqual(set(fsts["correct"].analyze("fat")), {"cat", "rat"})
+        self.assertEqual(set(fsts["correct"].analyze("oat")), {"cat", "rat"})
+
     def test_range_quantifiers(self):
         f0 = FST.regex("a{0}")
         self.assertEqual(set(f0.generate("")), {""})

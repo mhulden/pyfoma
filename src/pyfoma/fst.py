@@ -26,8 +26,22 @@ def harmonize_alphabet(func):
             for s, l, t in list(all_transitions(expanded.states)):
                 if '.' not in l:
                     continue
-                for sym in extra_symbols:
-                    newl = tuple(lbl if lbl != '.' else sym for lbl in l)
+                dot_positions = [idx for idx, lbl in enumerate(l) if lbl == '.']
+                if len(l) == 2 and dot_positions == [0, 1]:
+                    # ('.', '.') is outside-sigma non-identity wildcard pairing.
+                    # Expand to concrete non-identity symbol pairs, plus known<->outside
+                    # pairings so unknown-symbol substitutions remain representable.
+                    known_nonid = (
+                        (x, y) for x, y in itertools.product(extra_symbols, repeat=2) if x != y
+                    )
+                    known_to_outside = ((x, '.') for x in extra_symbols)
+                    outside_to_known = (('.', y) for y in extra_symbols)
+                    replacements = itertools.chain(known_nonid, known_to_outside, outside_to_known)
+                else:
+                    replacements = itertools.product(extra_symbols, repeat=len(dot_positions))
+                for repl in replacements:
+                    repl_iter = iter(repl)
+                    newl = tuple(next(repl_iter) if lbl == '.' else lbl for lbl in l)
                     existing = s.transitions.get(newl, ())
                     if not any(
                         arc.targetstate is t.targetstate and arc.weight == t.weight
@@ -328,12 +342,12 @@ class FST:
         1.0 2.0        < transition has weight 1.0, finalweight for this state is 2.0
         1.0            < transition has weight 1.0
 
-        Foma distinguishes between @ (= @_IDENTITY_SYMBOL_@) and ? (= @_UNKNOWN_SYMBOL_@) on transitions
-        whereas pyfoma does not - only '.' is special in pyfoma.
-        Both get translated to '.' in pyfoma. However, in the other direction e.g. the label ('.', 'a') becomes
-        @_UNKNOWN_SYMBOL_@:a, whereas ('.',) becomes "@_IDENTITY_SYMBOL_@".
-        pyfoma cannot currently express ?:?, which in foma means "translate some symbol outside the alphabet
-        to some other symbol outside the alphabet" (i.e. not an identity relationship).
+        Foma distinguishes between @ (= @_IDENTITY_SYMBOL_@) and ? (= @_UNKNOWN_SYMBOL_@) on transitions.
+        pyfoma uses '.' as wildcard and maps:
+          ('.',)     <-> @:@
+          ('.', 'a') <-> ?:a
+          ('a', '.') <-> a:?
+          ('.', '.') <-> ?:?
         """
 
         fomastring = iter(fomastr.split("\n"))
@@ -363,13 +377,14 @@ class FST:
                 if line == '##states##':
                     mode = 'states'
                     for key, label in alphabet.items():
-                        if label == "@_IDENTITY_SYMBOL_@" or label == "@_UNKNOWN_SYMBOL_@":
-                            alphabet[key] = '.'
                         if label == "@_EPSILON_SYMBOL_@":
                             continue     # Unlike foma, don't put epsilon in the alphabet
                         if label == ".":
-                            alphabet[key] = '\\.'
-                        newfst.alphabet.add(alphabet[key])
+                            newfst.alphabet.add(LITERAL_DOT)
+                        elif label in {"@_IDENTITY_SYMBOL_@", "@_UNKNOWN_SYMBOL_@"}:
+                            newfst.alphabet.add('.')
+                        else:
+                            newfst.alphabet.add(label)
                     continue
                 number, symbol = line.split(" ", 1) # First space separates the number and the symbol string
                 alphabet[number] = symbol
@@ -434,10 +449,37 @@ class FST:
                     newfst.finalstates.add(statedict[source])
 
                 if insym != '-1':
+                    def _decode_sigma(sym):
+                        if sym == "@_IDENTITY_SYMBOL_@":
+                            return "__PYFOMA_IDENTITY_DOT__"
+                        if sym == "@_UNKNOWN_SYMBOL_@":
+                            return "__PYFOMA_UNKNOWN_DOT__"
+                        if sym == "@_EPSILON_SYMBOL_@":
+                            return ""
+                        if sym == ".":
+                            return LITERAL_DOT
+                        return sym
+
+                    def _wildcardize(sym):
+                        return "." if sym in {"__PYFOMA_IDENTITY_DOT__", "__PYFOMA_UNKNOWN_DOT__"} else sym
+
                     if outsym == None:
-                        label = (alphabet[insym],)
+                        ins = _decode_sigma(alphabet[insym])
+                        if ins == "__PYFOMA_IDENTITY_DOT__":
+                            label = ('.',)
+                        elif ins == "__PYFOMA_UNKNOWN_DOT__":
+                            label = ('.', '.')
+                        else:
+                            label = (ins,)
                     else:
-                        label = (alphabet[insym], alphabet[outsym])
+                        ins = _decode_sigma(alphabet[insym])
+                        out = _decode_sigma(alphabet[outsym])
+                        if ins == "__PYFOMA_IDENTITY_DOT__" and out == "__PYFOMA_IDENTITY_DOT__":
+                            label = ('.',)
+                        elif ins == "__PYFOMA_UNKNOWN_DOT__" and out == "__PYFOMA_UNKNOWN_DOT__":
+                            label = ('.', '.')
+                        else:
+                            label = (_wildcardize(ins), _wildcardize(out))
                     if len(weightslines) == 0:
                         tweight = 0.0
                     else:
@@ -1009,7 +1051,11 @@ class FST:
                         heapq.heappush(Q, (cost + t.weight, negpos, next(cntr), output + [lbl[OUT]], t.targetstate))
                     elif -negpos < len(word_tokenized):
                         nextsym = word_tokenized[-negpos] if word_tokenized[-negpos] in self.alphabet else '.'
-                        appendedsym = word_tokenized[-negpos] if (nextsym == '.' and lbl[OUT] == '.') else lbl[OUT]
+                        appendedsym = (
+                            word_tokenized[-negpos]
+                            if (nextsym == '.' and len(lbl) == 1 and lbl[0] == '.')
+                            else lbl[OUT]
+                        )
                         if nextsym == lbl[IN]:
                             heapq.heappush(Q, (
                             cost + t.weight, negpos - 1, next(cntr), output + [appendedsym], t.targetstate))
@@ -1384,6 +1430,32 @@ class FST:
         """Perform the cross-product of T1, T2 through composition.
         Keyword arguments:
         optional -- if True, calculates T1:T2 | T1."""
+        def _is_single_wildcard(fstx: 'FST') -> bool:
+            if fstx.alphabet != {'.'} or len(fstx.states) != 2 or len(fstx.finalstates) != 1:
+                return False
+            transitions = list(fstx.initialstate.all_transitions())
+            if len(transitions) != 1:
+                return False
+            label, trans = transitions[0]
+            final = next(iter(fstx.finalstates))
+            return (
+                label == ('.',)
+                and trans.targetstate is final
+                and trans.weight == 0.0
+                and final.finalweight == 0.0
+            )
+
+        # Regex .:. should denote any->any, i.e. identity + non-identity wildcard mapping.
+        if not optional and _is_single_wildcard(self) and _is_single_wildcard(fst2):
+            newfst = FST(alphabet={'.'})
+            second = State()
+            second.finalweight = 0.0
+            newfst.states.add(second)
+            newfst.finalstates = {second}
+            newfst.initialstate.add_transition(second, ('.',), 0.0)
+            newfst.initialstate.add_transition(second, ('.', '.'), 0.0)
+            return newfst
+
         newfst_a = self.copy_mod(modlabel = lambda l, _: l + ('',))
         newfst_b = fst2.copy_mod(modlabel = lambda l, _: ('',) + l)
         if optional == True:
@@ -1402,7 +1474,7 @@ class FST:
                 t = x[:-1] + y
             else:
                 t = x[:-1] + y[1:]
-            if all(t[i] == t[0] for i in range(len(t))):
+            if all(t[i] == t[0] for i in range(len(t))) and t[0] != '.':
                 t = (t[0],)
             return t
 
