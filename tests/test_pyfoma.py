@@ -306,7 +306,25 @@ class TestFST(unittest.TestCase):
         self.assertFalse(FST.re("a:.").is_identity())
         self.assertFalse(FST.re(".:a").is_identity())
         self.assertFalse(FST.re(".:.").is_identity())
+        self.assertFalse(FST.re("a:.:a").is_identity())
         self.assertFalse(FST.re(".:x:y:.").is_identity())
+
+    def test_nonidentity_domain(self):
+        id_dom = FST.re("a:a | b:b").nonidentity_domain()
+        for word in ["", "a", "b", "ab", "ba"]:
+            self.assertFalse(bool(list(id_dom.analyze(word))))
+
+        mixed = FST.re("a:a | a:b").nonidentity_domain()
+        self.assertTrue(bool(list(mixed.analyze("a"))))
+        self.assertFalse(bool(list(mixed.analyze(""))))
+        self.assertFalse(bool(list(mixed.analyze("aa"))))
+
+        unsync = FST.re("a:'' '':a | a:'' '':b").nonidentity_domain()
+        self.assertTrue(bool(list(unsync.analyze("a"))))
+        self.assertFalse(bool(list(unsync.analyze(""))))
+
+        wild = FST.re("a:.").nonidentity_domain()
+        self.assertTrue(bool(list(wild.analyze("a"))))
 
     def test_is_functional(self):
         self.assertTrue(FST.re("a|b").is_functional())

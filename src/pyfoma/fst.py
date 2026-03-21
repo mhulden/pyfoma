@@ -2068,94 +2068,136 @@ class FST:
                 input_labels.add(label)
         return True
 
-    def is_identity(self):
-        """Return True if every successful path maps its input to itself.
+    @staticmethod
+    def _identity_advance_discrepancy(discrepancy, label):
+        """Advance discrepancy by one arc label.
 
-        The test uses a discrepancy DFS similar to Hulden (2009) / foma:
-        for each reachable state we track one residual "debt" between input
-        and output sides, and fail on mismatches or inconsistent revisits.
-
-        For n-tape labels, only the first and last tapes are compared.
-        Wildcard handling:
-          - one-tape ('.',) is allowed only with empty discrepancy
-          - any wildcard use on labels with len(label) > 1 fails
+        Returns a new discrepancy tuple, or None on mismatch/violation.
+        Discrepancy format: (sign, symbols), sign in {-1,0,1}.
         """
+        empty = (0, tuple())
+        if len(label) == 0:
+            return None
+
+        if len(label) == 1:
+            sym = label[0]
+            if sym == '.':
+                return empty if discrepancy == empty else None
+            in_sym, out_sym = sym, sym
+        else:
+            if any(sym == '.' for sym in label):
+                return None
+            in_sym, out_sym = label[0], label[-1]
+
+        if discrepancy[0] == 1:
+            in_tail = list(discrepancy[1])
+            out_tail = []
+        elif discrepancy[0] == -1:
+            in_tail = []
+            out_tail = list(discrepancy[1])
+        else:
+            in_tail, out_tail = [], []
+
+        if in_sym != '':
+            in_tail.append(in_sym)
+        if out_sym != '':
+            out_tail.append(out_sym)
+
+        i = 0
+        while i < len(in_tail) and i < len(out_tail):
+            if in_tail[i] != out_tail[i]:
+                return None
+            i += 1
+
+        in_rest = tuple(in_tail[i:])
+        out_rest = tuple(out_tail[i:])
+
+        if in_rest and out_rest:
+            return None
+        if in_rest:
+            return (1, in_rest)
+        if out_rest:
+            return (-1, out_rest)
+        return empty
+
+    def _identity_discrepancy_scan(self, mark_nonidentity=False, marker_symbol='@_NOTID_@'):
+        """Run discrepancy DFS; either test identity or mark violating arcs."""
         work = self.copy_mod().trim()
-        empty = (0, tuple())  # (sign, symbols): sign 1=input debt, -1=output debt, 0=none
-
-        def _advance(discrepancy, label):
-            if len(label) == 0:
-                return None
-
-            if len(label) == 1:
-                sym = label[0]
-                if sym == '.':
-                    return empty if discrepancy == empty else None
-                in_sym, out_sym = sym, sym
-            else:
-                in_sym, out_sym = label[0], label[-1]
-                if in_sym == '.' or out_sym == '.':
-                    return None
-
-            if discrepancy[0] == 1:
-                in_tail = list(discrepancy[1])
-                out_tail = []
-            elif discrepancy[0] == -1:
-                in_tail = []
-                out_tail = list(discrepancy[1])
-            else:
-                in_tail, out_tail = [], []
-
-            if in_sym != '':
-                in_tail.append(in_sym)
-            if out_sym != '':
-                out_tail.append(out_sym)
-
-            i = 0
-            while i < len(in_tail) and i < len(out_tail):
-                if in_tail[i] != out_tail[i]:
-                    return None
-                i += 1
-
-            in_rest = tuple(in_tail[i:])
-            out_rest = tuple(out_tail[i:])
-
-            if in_rest and out_rest:
-                return None
-            if in_rest:
-                return (1, in_rest)
-            if out_rest:
-                return (-1, out_rest)
-            return empty
-
+        empty = (0, tuple())
         discrepancies = {work.initialstate: empty}
         stack = [work.initialstate]
+        marked = {}
 
         while stack:
             state = stack.pop()
             state_discrepancy = discrepancies[state]
 
             if state in work.finalstates and state_discrepancy != empty:
-                return False
+                if not mark_nonidentity:
+                    return False
 
             for label, transition in state.all_transitions():
-                new_discrepancy = _advance(state_discrepancy, label)
-                if new_discrepancy is None:
-                    return False
+                new_discrepancy = self._identity_advance_discrepancy(state_discrepancy, label)
+                failed = new_discrepancy is None
+                if not failed:
+                    target = transition.targetstate
+                    if target in work.finalstates and new_discrepancy != empty:
+                        failed = True
+                    elif target in discrepancies and discrepancies[target] != new_discrepancy:
+                        failed = True
 
-                target = transition.targetstate
-                if target in work.finalstates and new_discrepancy != empty:
-                    return False
-
-                if target in discrepancies:
-                    if discrepancies[target] != new_discrepancy:
+                if failed:
+                    if not mark_nonidentity:
                         return False
+                    marked[id(transition)] = (state, label, transition)
                     continue
 
-                discrepancies[target] = new_discrepancy
-                stack.append(target)
+                target = transition.targetstate
+                if target not in discrepancies:
+                    discrepancies[target] = new_discrepancy
+                    stack.append(target)
 
-        return True
+        if not mark_nonidentity:
+            return True
+
+        for state, label, transition in marked.values():
+            if transition not in state.transitions.get(label, set()):
+                continue
+            state._invalidate_transition_indexes()
+            state.transitions[label].discard(transition)
+            if len(state.transitions[label]) == 0:
+                state.transitions.pop(label)
+            if len(label) == 1:
+                new_label = (marker_symbol,)
+            else:
+                parts = list(label)
+                parts[-1] = marker_symbol
+                new_label = tuple(parts)
+            transition.label = new_label
+            state.transitions[new_label] = state.transitions.get(new_label, set()) | {transition}
+
+        if marked:
+            work.alphabet.add(marker_symbol)
+        return work
+
+    def is_identity(self):
+        """Return True if every successful path maps its input to itself."""
+        return bool(self._identity_discrepancy_scan(mark_nonidentity=False))
+
+    def nonidentity_domain(self):
+        """Return an acceptor for inputs that can yield a non-identity output."""
+        marker = '@_NOTID_@'
+        marked = self._identity_discrepancy_scan(mark_nonidentity=True, marker_symbol=marker)
+        contains_marker = FST.re(f".* '{marker}' .*")
+        return (
+            marked.compose(contains_marker)
+            .project(dim=0)
+            .trim()
+            .epsilon_remove()
+            .determinize_as_dfa()
+            .minimize_as_dfa()
+            .cleanup_sigma()
+        )
 
     def is_functional(self):
         """Return True if the transducer is single-valued for every input."""
