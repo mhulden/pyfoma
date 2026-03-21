@@ -360,6 +360,21 @@ class TestFST(unittest.TestCase):
         self.assertTrue(bool(list(star_amb.analyze("aa"))))
         self.assertFalse(bool(list(star_amb.analyze("b"))))
 
+    def test_ambiguous_and_unambiguous_parts(self):
+        fst = FST.re("$^rewrite(a:(b|c) / c _) @ $^rewrite(c:a / _ b)")
+        amb_part = fst.ambiguous_part()
+        unamb_part = fst.unambiguous_part()
+
+        self.assertEqual(amb_part.union(unamb_part).hash(), fst.hash())
+        self.assertEqual(amb_part.project(0).hash(), fst.ambiguous_domain().hash())
+        self.assertTrue(unamb_part.is_unambiguous())
+
+        simple = FST.re("a:b | a:'' '':b")
+        simple_amb = simple.ambiguous_part()
+        simple_unamb = simple.unambiguous_part()
+        self.assertEqual(simple_amb.hash(), simple.hash())
+        self.assertEqual(simple_unamb.hash(), FST.re("'' - ''").hash())
+
     def test_to_regex_roundtrip_acceptor(self):
         probes = [
             "",

@@ -2184,12 +2184,19 @@ class FST:
         """Return True if every successful path maps its input to itself."""
         return bool(self._identity_discrepancy_scan(mark_nonidentity=False))
 
+    @staticmethod
+    def _prune_alphabet_to_seen(fst_obj: 'FST') -> 'FST':
+        """Drop alphabet symbols that do not occur on any transition label."""
+        seen = {sym for _, lbl, _ in all_transitions(fst_obj.states) for sym in lbl if sym != ''}
+        fst_obj.alphabet = seen
+        return fst_obj
+
     def nonidentity_domain(self):
         """Return an acceptor for inputs that can yield a non-identity output."""
         marker = '@_NOTID_@'
         marked = self._identity_discrepancy_scan(mark_nonidentity=True, marker_symbol=marker)
         contains_marker = FST.re(f".* '{marker}' .*")
-        return (
+        return self._prune_alphabet_to_seen(
             marked.compose(contains_marker)
             .project(dim=0)
             .trim()
@@ -2243,9 +2250,34 @@ class FST:
         """Return an acceptor for inputs that have more than one path."""
         path_fst = self._path_encode_transducer()
         notid = path_fst.invert().compose(path_fst).nonidentity_domain()
-        return (
+        return self._prune_alphabet_to_seen(
             path_fst.compose(notid)
             .project(dim=0)
+            .trim()
+            .epsilon_remove()
+            .determinize_as_dfa()
+            .minimize_as_dfa()
+            .cleanup_sigma()
+        )
+
+    def ambiguous_part(self):
+        """Return the subtransducer restricted to ambiguous-input paths."""
+        return self._prune_alphabet_to_seen(
+            self.ambiguous_domain()
+            .compose(self)
+            .trim()
+            .epsilon_remove()
+            .determinize_as_dfa()
+            .minimize_as_dfa()
+            .cleanup_sigma()
+        )
+
+    def unambiguous_part(self):
+        """Return the subtransducer restricted to unambiguous-input paths."""
+        return self._prune_alphabet_to_seen(
+            self.ambiguous_domain()
+            .complement()
+            .compose(self)
             .trim()
             .epsilon_remove()
             .determinize_as_dfa()
