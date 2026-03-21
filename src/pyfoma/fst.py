@@ -1595,7 +1595,7 @@ class FST:
                 defs['rule'] = restricted.compose(defs['base'])
         else:
             defs['rule'] = defs['base']
-        defs['remrewr'] = FST.re("'@<@':'' (.-'@>@')* '@>@':''") # worsener
+        defs['remrewr'] = FST.re("'@<@':'' (.-'@>@'-'@<@'-'#')* '@>@':''") # worsener
         worseners = [FST.re(".* $remrewr (.|$remrewr)*", defs)]
         if _flag_true('longest'):
             worseners.append(FST.re(".* '@<@' $aux+ '':('@>@' '@<@'?) $aux ($br:''|'':$br|$aux)* .*", defs))
