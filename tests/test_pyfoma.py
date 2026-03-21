@@ -404,6 +404,8 @@ class TestFST(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             FST.re("a:x | a:y").is_equivalent(FST.re("a:x | a:z"))
+        # Same non-functional structure should pass through tuple-label fast path.
+        self.assertTrue(FST.re("a:x | a:y").is_equivalent(FST.re("a:x | a:y")))
 
         self.assertTrue(FST.re("a:b | c:d").is_equivalent(FST.re("a:'' '':b | c:d")))
         self.assertFalse(FST.re("a:b | c:d").is_equivalent(FST.re("a:b | c:e")))

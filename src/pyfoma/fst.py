@@ -2256,6 +2256,8 @@ class FST:
         """Test equivalence when decidable for the current machine classes.
 
         Rules:
+          - Fast path: exact canonical structural equality (hash) => equivalent.
+          - Fast path: tuple-label symmetric difference empty => equivalent.
           - If both are acceptors (arity 1), compare by symmetric difference.
           - Otherwise, use transducer equivalence:
             * one functional and one non-functional => not equivalent
@@ -2263,11 +2265,21 @@ class FST:
             * both functional => compare input domains, then identity of
               inverse-compositions.
         """
+        if self.hash() == other.hash():
+            return True
+
+        # Tuple-label view catches exact graph-equivalent transducers quickly
+        # (including some non-functional cases) without composition.
+        left_full = self.copy_mod().trim()
+        right_full = other.copy_mod().trim()
+        if self._equivalent_by_symmetric_difference(left_full, right_full):
+            return True
+
         left = self._equivalence_view().trim()
         right = other._equivalence_view().trim()
 
         if left.arity() == 1 and right.arity() == 1:
-            return self._equivalent_by_symmetric_difference(left, right)
+            return False
 
         left_fun = left.is_functional()
         right_fun = right.is_functional()
