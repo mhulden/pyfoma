@@ -2210,6 +2210,86 @@ class FST:
         """Return True if the transducer is single-valued for every input."""
         return self.invert().compose(self).is_identity()
 
+    @staticmethod
+    def _equivalent_by_symmetric_difference(fst1: 'FST', fst2: 'FST') -> bool:
+        left = (
+            fst1.copy_mod()
+            .trim()
+            .epsilon_remove()
+            .push_weights()
+            .determinize_as_dfa()
+            .minimize_as_dfa()
+            .trim()
+        )
+        right = (
+            fst2.copy_mod()
+            .trim()
+            .epsilon_remove()
+            .push_weights()
+            .determinize_as_dfa()
+            .minimize_as_dfa()
+            .trim()
+        )
+        sym = left.difference(right).union(right.difference(left)).trim()
+        return len(sym.finalstates) == 0
+
+    def _equivalence_view(self) -> 'FST':
+        """Normalize labels for equivalence checks.
+
+        For arity > 2, only the first and last tapes are retained.
+        """
+        if self.arity() <= 2:
+            return self.copy_mod()
+
+        def _project_label(label, _weight):
+            if len(label) == 1:
+                return label
+            first, last = label[0], label[-1]
+            if first == last and first != '.':
+                return (first,)
+            return (first, last)
+
+        projected = self.copy_mod(modlabel=_project_label)
+        return self._prune_alphabet_to_seen(projected)
+
+    def is_equivalent(self, other: 'FST') -> bool:
+        """Test equivalence when decidable for the current machine classes.
+
+        Rules:
+          - If both are acceptors (arity 1), compare by symmetric difference.
+          - Otherwise, use transducer equivalence:
+            * one functional and one non-functional => not equivalent
+            * both non-functional => undecidable (raises ValueError)
+            * both functional => compare input domains, then identity of
+              inverse-compositions.
+        """
+        left = self._equivalence_view().trim()
+        right = other._equivalence_view().trim()
+
+        if left.arity() == 1 and right.arity() == 1:
+            return self._equivalent_by_symmetric_difference(left, right)
+
+        left_fun = left.is_functional()
+        right_fun = right.is_functional()
+
+        if left_fun != right_fun:
+            return False
+        if not left_fun and not right_fun:
+            raise ValueError(
+                "Equivalence is undecidable for two non-functional transducers."
+            )
+
+        left_dom = left.project(0)
+        right_dom = right.project(0)
+        if not self._equivalent_by_symmetric_difference(left_dom, right_dom):
+            return False
+
+        if not left.invert().compose(right).is_identity():
+            return False
+        if not right.invert().compose(left).is_identity():
+            return False
+        return True
+
     def _path_encode_transducer(self):
         """Return a transducer whose output side encodes unique paths."""
         work = self.copy_mod().trim()

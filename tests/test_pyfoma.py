@@ -394,6 +394,30 @@ class TestFST(unittest.TestCase):
         self.assertEqual(simple_amb.hash(), simple.hash())
         self.assertEqual(simple_unamb.hash(), FST.re("'' - ''").hash())
 
+    def test_is_equivalent(self):
+        self.assertTrue(FST.re("a|b").is_equivalent(FST.re("b|a")))
+        self.assertFalse(FST.re("a|b").is_equivalent(FST.re("a|c")))
+
+        f_fun = FST.re("(a:x a:x)* | a:y (a:y a:y)*")
+        f_non = FST.re("a:x | a:y")
+        self.assertFalse(f_fun.is_equivalent(f_non))
+
+        with self.assertRaises(ValueError):
+            FST.re("a:x | a:y").is_equivalent(FST.re("a:x | a:z"))
+
+        self.assertTrue(FST.re("a:b | c:d").is_equivalent(FST.re("a:'' '':b | c:d")))
+        self.assertFalse(FST.re("a:b | c:d").is_equivalent(FST.re("a:b | c:e")))
+
+        # >2 tapes: compare first and last tapes only.
+        self.assertTrue(FST.re("a:x:b | c:y:d").is_equivalent(FST.re("a:q:b | c:r:d")))
+        self.assertFalse(FST.re("a:x:b").is_equivalent(FST.re("a:x:c")))
+
+        self.assertTrue(
+            FST.re("(a:'' b:'' '':c '':d a)* (b:'' '':a)+").is_equivalent(
+                FST.re("(a:c b:d a:'' '':a)* (b:a)+")
+            )
+        )
+
     def test_to_regex_roundtrip_acceptor(self):
         probes = [
             "",
