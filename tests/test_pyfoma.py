@@ -364,9 +364,28 @@ class TestFST(unittest.TestCase):
         fst = FST.re("$^rewrite(a:(b|c) / c _) @ $^rewrite(c:a / _ b)")
         amb_part = fst.ambiguous_part()
         unamb_part = fst.unambiguous_part()
+        amb_dom = fst.ambiguous_domain()
+
+        # Golden hashes validated against foma parity checks.
+        self.assertEqual(
+            fst.hash(),
+            "6d26e446dd35da158cf0f38fbbc62790c369907bad31e012b9323c9433c0bc4d",
+        )
+        self.assertEqual(
+            amb_part.hash(),
+            "58f6293f1c7d73918c93d0bfecd76b73d6f57a8dbb9c8dc1b28f35c968cc326f",
+        )
+        self.assertEqual(
+            unamb_part.hash(),
+            "a300590c97f0e71843ad7a41c106445e97a519b83239885719995956f48ae954",
+        )
+        self.assertEqual(
+            amb_dom.hash(),
+            "2ca9706dcb6d263e9e2e20fec28694e9904d0482aab7ff805c3d82f16f940e07",
+        )
 
         self.assertEqual(amb_part.union(unamb_part).hash(), fst.hash())
-        self.assertEqual(amb_part.project(0).hash(), fst.ambiguous_domain().hash())
+        self.assertEqual(amb_part.project(0).hash(), amb_dom.hash())
         self.assertTrue(unamb_part.is_unambiguous())
 
         simple = FST.re("a:b | a:'' '':b")
