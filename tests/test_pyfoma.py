@@ -321,6 +321,12 @@ class TestFST(unittest.TestCase):
         for word in ["", "a", "aa", "aaa", "aaaa"]:
             self.assertLessEqual(len(set(ambig_but_functional.generate(word))), 1)
 
+    def test_is_unambiguous(self):
+        self.assertTrue(FST.re("a:b").is_unambiguous())
+        self.assertFalse(FST.re("a:b | a:'' '':b").is_unambiguous())
+        self.assertTrue(FST.re("(a:b)*").is_unambiguous())
+        self.assertFalse(FST.re("(a:b)* | (a:'' '':b)*").is_unambiguous())
+
     def test_to_regex_roundtrip_acceptor(self):
         probes = [
             "",
