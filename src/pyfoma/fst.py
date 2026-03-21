@@ -2203,17 +2203,17 @@ class FST:
         """Return True if the transducer is single-valued for every input."""
         return self.invert().compose(self).is_identity()
 
-    def is_unambiguous(self):
-        """Return True if each input has at most one accepting path."""
+    def _path_encode_transducer(self):
+        """Return a transducer whose output side encodes unique paths."""
         work = self.copy_mod().trim()
 
         path_counter = itertools.count()
         state_numbers = work.number_unnamed_states(force=True)
-        new_fst = FST(alphabet=work.alphabet.copy())
+        path_fst = FST(alphabet=work.alphabet.copy())
         state_map = {state: State(name=state.name) for state in work.states}
-        new_fst.states = set(state_map.values())
-        new_fst.initialstate = state_map[work.initialstate]
-        new_fst.finalstates = {state_map[s] for s in work.finalstates}
+        path_fst.states = set(state_map.values())
+        path_fst.initialstate = state_map[work.initialstate]
+        path_fst.finalstates = {state_map[s] for s in work.finalstates}
 
         for state in work.finalstates:
             state_map[state].finalweight = state.finalweight
@@ -2229,10 +2229,29 @@ class FST:
                 parts[-1] = path_sym
                 new_label = tuple(parts)
 
-            new_fst.alphabet.add(path_sym)
+            path_fst.alphabet.add(path_sym)
             state_map[source].add_transition(state_map[transition.targetstate], new_label, transition.weight)
 
-        return new_fst.invert().compose(new_fst).is_identity()
+        return path_fst
+
+    def is_unambiguous(self):
+        """Return True if each input has at most one accepting path."""
+        path_fst = self._path_encode_transducer()
+        return path_fst.invert().compose(path_fst).is_identity()
+
+    def ambiguous_domain(self):
+        """Return an acceptor for inputs that have more than one path."""
+        path_fst = self._path_encode_transducer()
+        notid = path_fst.invert().compose(path_fst).nonidentity_domain()
+        return (
+            path_fst.compose(notid)
+            .project(dim=0)
+            .trim()
+            .epsilon_remove()
+            .determinize_as_dfa()
+            .minimize_as_dfa()
+            .cleanup_sigma()
+        )
 
     def has_weights(self):
         """Determines if FST has non-trivial weights, i.e. not all 0.0 for transitions

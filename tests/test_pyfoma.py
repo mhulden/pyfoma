@@ -345,6 +345,21 @@ class TestFST(unittest.TestCase):
         self.assertTrue(FST.re("(a:b)*").is_unambiguous())
         self.assertFalse(FST.re("(a:b)* | (a:'' '':b)*").is_unambiguous())
 
+    def test_ambiguous_domain(self):
+        amb = FST.re("a:b | a:'' '':b").ambiguous_domain()
+        self.assertTrue(bool(list(amb.analyze("a"))))
+        self.assertFalse(bool(list(amb.analyze(""))))
+        self.assertFalse(bool(list(amb.analyze("aa"))))
+
+        unamb = FST.re("a:b").ambiguous_domain()
+        for word in ["", "a", "aa", "b"]:
+            self.assertFalse(bool(list(unamb.analyze(word))))
+
+        star_amb = FST.re("(a:b)* | (a:'' '':b)*").ambiguous_domain()
+        self.assertTrue(bool(list(star_amb.analyze("a"))))
+        self.assertTrue(bool(list(star_amb.analyze("aa"))))
+        self.assertFalse(bool(list(star_amb.analyze("b"))))
+
     def test_to_regex_roundtrip_acceptor(self):
         probes = [
             "",
