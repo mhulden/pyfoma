@@ -308,6 +308,19 @@ class TestFST(unittest.TestCase):
         self.assertFalse(FST.re(".:.").is_identity())
         self.assertFalse(FST.re(".:x:y:.").is_identity())
 
+    def test_is_functional(self):
+        self.assertTrue(FST.re("a|b").is_functional())
+        self.assertTrue(FST.re("a:'' '':b | a:b").is_functional())
+        self.assertFalse(FST.re("a:x | a:y").is_functional())
+        self.assertFalse(
+            FST.re("$^rewrite(a [^a]* a [^a]* b:(b|c) a [^b]* b)").is_functional()
+        )
+
+        ambig_but_functional = FST.re("(a:x a:x)* | a:y (a:y a:y)*")
+        self.assertTrue(ambig_but_functional.is_functional())
+        for word in ["", "a", "aa", "aaa", "aaaa"]:
+            self.assertLessEqual(len(set(ambig_but_functional.generate(word))), 1)
+
     def test_to_regex_roundtrip_acceptor(self):
         probes = [
             "",

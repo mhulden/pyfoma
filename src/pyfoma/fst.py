@@ -2157,6 +2157,10 @@ class FST:
 
         return True
 
+    def is_functional(self):
+        """Return True if the transducer is single-valued for every input."""
+        return self.invert().compose(self).is_identity()
+
     def has_weights(self):
         """Determines if FST has non-trivial weights, i.e. not all 0.0 for transitions
            and final states."""
