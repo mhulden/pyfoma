@@ -37,6 +37,10 @@ Important distinction:
   - `('.')` for identity wildcard behavior
   - `('.', '.')` for unknown-to-unknown wildcard behavior
 
+Identity-test implication:
+- In identity-discrepancy algorithms, UNKNOWN-style behavior (`?` semantics / two-sided unknown mapping) is treated as non-identity-safe by default.
+- Practical consequence in pyfoma tests: wildcard use on multi-tape labels (for example `a:.`, `.:a`, `.:.`) fails `is_identity()`.
+
 Regex-level consequence:
 - `.:.` means any->any (identity + non-identity).
 - `.:. - .` means strict non-identity substitution wildcard.
@@ -88,3 +92,4 @@ Correct behavior example:
 - Changing tokenizer semantics can break built-in helper regexes in methods like `ignore()` and `rewrite()`.
 - String input and token-list input can drift if normalization is only done in one path.
 - Literal dot and wildcard dot must be tested together in rewrite contexts.
+- Property extraction methods (`nonidentity_domain`, `ambiguous_domain`) use internal marker symbols; ensure markers do not leak into final external alphabets.

@@ -31,6 +31,11 @@ Useful hot test groups:
 - rewrite + directed flags
 - literal period vs wildcard
 - wildcard transduction semantics (`.:.`, `.:. - .`) including unknown-symbol behavior
+- property APIs:
+  - `is_identity` / `nonidentity_domain`
+  - `is_functional` / `is_unambiguous`
+  - `ambiguous_domain` / `ambiguous_part` / `unambiguous_part`
+  - `is_equivalent` (including undecidable branch for non-functional pairs)
 - JSON/foma/att roundtrip behavior
 - compose after mutation (transition index cache correctness)
 
@@ -58,14 +63,26 @@ PYTHONPATH=src python3 -m unittest -q
 - Did string input and tokenized-list input behave the same for the changed symbol semantics?
 - Did internal helper regexes still mean what they used to after parser changes?
 - Did serialization roundtrip preserve weights and escaped symbols?
+- For `nonidentity_domain`, are we preserving existential semantics ("at least one non-identity path")?
+- For ambiguity APIs, did path encoding remain injective per outgoing-arc choice (no accidental path collisions)?
+- For `is_equivalent`, did we preserve the decidability contract:
+  - mixed functional/non-functional => `False`
+  - both non-functional => raise undecidable
+  - both functional => domain equivalence + inverse-compose identity checks?
 
 ## 6) Performance/memory safety notes
 
 - Rewrite and context restriction can explode if a helper expression broadens unexpectedly.
+- Property APIs can also blow up on heavy compose chains (`invert().compose(...)` + determinize/minimize), especially ambiguity-domain extraction.
 - For risky rewrite edits:
   - do compile-only probes first
   - avoid converting potentially huge generators to `set(...)` unless bounded
   - if needed, run probes under a memory cap and timeout
+
+For risky property edits:
+- probe each stage separately (`path_encode`, `invert().compose`, domain projection) before full normalization.
+- keep marker symbols private and cleaned from final sigma/alphabet outputs.
+- preserve behavior for >2 tapes (identity/equivalence compare first and last tapes).
 
 ## 7) Code review priorities
 

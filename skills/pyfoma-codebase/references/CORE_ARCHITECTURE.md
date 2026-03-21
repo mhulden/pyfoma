@@ -86,3 +86,30 @@ It is composition-heavy and is the most sensitive code path for:
   - application-time tokenization
   - serialization escapes
 - Bugs often come from mismatch between those layers rather than from a single method.
+
+## 7) Property APIs architecture (Hulden-style)
+
+Key methods in `fst.py` are direct constructions from Hulden (2009):
+
+- Identity:
+  - `is_identity()` uses a DFS discrepancy propagation check.
+  - Accept only if every successful path is identity on first/last tapes.
+- Non-identity domain:
+  - `nonidentity_domain()` marks discrepancy-causing arcs with a fresh marker,
+    then extracts input domain of paths containing that marker.
+  - This is existential: words are included if at least one path can be non-identity.
+- Functionality:
+  - `is_functional()` is `invert(self).compose(self).is_identity()`.
+- Ambiguity:
+  - `_path_encode_transducer()` rewrites output labels to unique per-path symbols.
+  - `is_unambiguous()` is identity on `path_fst^-1 .o. path_fst`.
+  - `ambiguous_domain()` is `dom(path_fst .o. NotID(path_fst^-1 .o. path_fst))`.
+  - `ambiguous_part()` / `unambiguous_part()` are domain-splices:
+    `A_amb .o. T` and `~A_amb .o. T`.
+- Equivalence (`is_equivalent()`):
+  - fast structural/canonical shortcuts first.
+  - if both are acceptors, falls back to language symmetric-difference.
+  - transducer case follows functional-equivalence boundary:
+    - one functional, one non-functional => `False`
+    - both non-functional => undecidable (`ValueError`)
+    - both functional => equal domains and identity of inverse-compositions.

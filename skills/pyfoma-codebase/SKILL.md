@@ -15,6 +15,8 @@ This skill is focused on:
 - `src/pyfoma/paradigm.py`
 - `src/pyfoma/_private/partition_refinement.py`
 - `src/pyfoma/flag.py` (secondary but frequently involved at runtime)
+- `hulden_diss/chapter_properties.tex` (theory for transducer properties APIs)
+- `foma/structures.c` (reference implementation lineage)
 
 Not in scope for this skill:
 - `cfg_*` modules
@@ -68,6 +70,13 @@ Then inspect code in this order:
 - Transition labels are tuples, even for one tape.
 - Composition and wildcard behavior depend on alphabet harmonization + transition index caches.
 - Rewrite internals use several helper regexes; changing symbol semantics can break them in non-obvious ways.
+- Transducer property methods follow Hulden (2009):
+  - functionality via `invert().compose(self).is_identity()`
+  - ambiguity via path-encoding transducer + identity/nonidentity tests
+  - ambiguity and nonidentity domain extraction are existential ("there exists a non-identity/non-unique path"), not universal.
+- Equivalence boundary is semantic, not implementation-only:
+  - both non-functional transducers => undecidable (method raises)
+  - one functional, one non-functional => immediately non-equivalent.
 
 ## High-Risk Areas
 
@@ -77,6 +86,8 @@ Then inspect code in this order:
   easy place to accidentally mutate caller inputs or explode transition count.
 - Tokenizer changes in `regexparse.py`:
   can silently alter semantics of many built-ins (`ignore`, `rewrite`, `restrict`).
+- Property APIs in `fst.py` (`is_identity`, `nonidentity_domain`, `is_functional`, `is_unambiguous`, `ambiguous_domain`, `ambiguous_part`, `unambiguous_part`, `is_equivalent`):
+  coupled to subtle discrepancy/path-label encoding logic; small changes can alter decidability behavior or over/under-generate debug domains.
 - Serialization (`todict/fromdict`, `tojs`, `from_fomastring/to_fomastring`, `save_att`):
   escaping, weights, and determinism/reproducibility details are easy to regress.
 
@@ -85,6 +96,11 @@ Then inspect code in this order:
 Primary:
 ```bash
 PYTHONPATH=src pytest -q
+```
+
+If full discovery fails because `foma/python` native bindings are unavailable in the environment, run:
+```bash
+PYTHONPATH=src pytest -q tests
 ```
 
 If `pytest` is unavailable in a shell, fallback:
@@ -96,6 +112,13 @@ For risky parser/runtime edits, also run focused tests in `tests/test_pyfoma.py`
 - `test_tokenizer`
 - `test_rewrite*`
 - `test_literal_period_*`
+- `test_is_identity`
+- `test_nonidentity_domain`
+- `test_is_functional`
+- `test_is_unambiguous`
+- `test_ambiguous_domain`
+- `test_ambiguous_and_unambiguous_parts`
+- `test_is_equivalent`
 - JSON/JS and ATT related tests
 
 ## Expected Output When Using This Skill
