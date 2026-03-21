@@ -286,6 +286,28 @@ class TestFST(unittest.TestCase):
         w2 = FST.re("a<2.0>")
         self.assertNotEqual(w1.hash(), w2.hash())
 
+    def test_is_identity(self):
+        self.assertTrue(FST.re("a:a").is_identity())
+        self.assertTrue(FST.re("a:'' '':a").is_identity())
+        self.assertTrue(FST.re("a:'' b:'' '':a '':b").is_identity())
+        self.assertTrue(FST.re("(a:'' '':a | b:'' '':b)*").is_identity())
+        self.assertTrue(FST.re(".").is_identity())
+
+        # n-tape: only first and last tapes are compared for identity.
+        self.assertTrue(FST.re("a:x:a | b:y:b").is_identity())
+        self.assertFalse(FST.re("a:x:b").is_identity())
+
+        self.assertFalse(FST.re("a:b").is_identity())
+        self.assertFalse(FST.re("a:''").is_identity())  # final with residual debt
+        self.assertFalse(FST.re("a:'' b:'' '':a '':c").is_identity())
+        self.assertFalse(FST.re("a:'' . '':a").is_identity())  # one-tape wildcard with debt
+
+        # >1 tape wildcard use always fails.
+        self.assertFalse(FST.re("a:.").is_identity())
+        self.assertFalse(FST.re(".:a").is_identity())
+        self.assertFalse(FST.re(".:.").is_identity())
+        self.assertFalse(FST.re(".:x:y:.").is_identity())
+
     def test_to_regex_roundtrip_acceptor(self):
         probes = [
             "",
