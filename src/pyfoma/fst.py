@@ -1581,7 +1581,7 @@ class FST:
         def _q(token: str) -> str:
             return "'" + token.replace("\\", "\\\\").replace("'", "\\'") + "'"
 
-        def _alt_expr(symbols: list[str]) -> str:
+        def _alt_expr(symbols: List[str]) -> str:
             return "(" + "|".join(_q(sym) for sym in symbols) + ")"
 
         allsyms = set(self.alphabet) | set(left.alphabet) | set(right.alphabet)
