@@ -95,6 +95,16 @@ class TestFST(unittest.TestCase):
         weighted = {''.join(lbl[0] for lbl in seq): cost for cost, seq in f2.words()}
         self.assertEqual(weighted, {"ab": 3.0, "ba": 3.0})
 
+    def test_eq_linguistic_redup_like_filter(self):
+        t = FST.re("x:('<' (car|house|boat) '>' '<' (car|house|boat) '>')")
+        expected = {"<car><car>", "<house><house>", "<boat><boat>"}
+
+        builtin = FST.re("$^eq($t, '<', '>')", {"t": t})
+        method = t.eq(FST.re("'<'"), FST.re("'>'"))
+
+        self.assertEqual(set(builtin.generate("x")), expected)
+        self.assertEqual(set(method.generate("x")), expected)
+
     def test_tokenizer(self):
         f1 = FST.regex(r"'[NOUN]' '[VERB]'")
         self.assertEqual(f1.alphabet, {"[NOUN]", "[VERB]"})
