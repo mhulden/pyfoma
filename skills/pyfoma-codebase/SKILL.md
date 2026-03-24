@@ -78,6 +78,33 @@ Then inspect code in this order:
   - both non-functional transducers => undecidable (method raises)
   - one functional, one non-functional => immediately non-equivalent.
 
+## Pyfoma Notation Quick Reference
+
+Use pyfoma notation in skill outputs and patch explanations by default.
+
+| Pyfoma | Meaning | Example |
+|---|---|---|
+| `@` | composition | `A @ B` |
+| `:` | cross-product | `(cat):(gato)` |
+| `:?` | optional cross-product | `(a):?b` |
+| `|` | union | `a|b` |
+| `&` | intersection | `[a-z]* & .*a` |
+| `-` | subtraction | `[a-z]* - .*a` |
+| `~` | complement | `~(a|b)` |
+| `''` | epsilon | `a:''` |
+| `.` | wildcard in regex (compiled as outside-sigma symbol) | `.*` |
+| `#` | word edge in contexts | `$^rewrite(a:b / _ #)` |
+| `$^invert(X)` / `X^-1` | inversion (both forms acceptable in docs) | `$^invert(a:b)` |
+| `$^input(X)` | project input tape | `$^input($T)` |
+| `$^output(X)` | project output tape | `$^output($T)` |
+| `$^rewrite(...)` | rewrite transducer constructor | `$^rewrite(a:b / c _ d)` |
+| `$^restrict(...)` | context restriction acceptor | `$^restrict(a / c _ d)` |
+
+Notation guardrails:
+- Prefer `@` over `.o.` in pyfoma-facing docs.
+- Prefer `$^rewrite(...)` terminology over foma arrow notation in prose.
+- Keep foma/Xerox notation only in explicit comparison tables, not as default formulas.
+
 ## High-Risk Areas
 
 - `FST.rewrite()` and `context_restrict()`:

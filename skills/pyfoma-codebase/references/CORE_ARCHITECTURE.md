@@ -102,10 +102,10 @@ Key methods in `fst.py` are direct constructions from Hulden (2009):
   - `is_functional()` is `invert(self).compose(self).is_identity()`.
 - Ambiguity:
   - `_path_encode_transducer()` rewrites output labels to unique per-path symbols.
-  - `is_unambiguous()` is identity on `path_fst^-1 .o. path_fst`.
-  - `ambiguous_domain()` is `dom(path_fst .o. NotID(path_fst^-1 .o. path_fst))`.
+  - `is_unambiguous()` is identity on `path_fst^-1 @ path_fst`.
+  - `ambiguous_domain()` is `dom(path_fst @ NotID(path_fst^-1 @ path_fst))`.
   - `ambiguous_part()` / `unambiguous_part()` are domain-splices:
-    `A_amb .o. T` and `~A_amb .o. T`.
+    `A_amb @ T` and `~A_amb @ T`.
 - Equivalence (`is_equivalent()`):
   - fast structural/canonical shortcuts first.
   - if both are acceptors, falls back to language symmetric-difference.
