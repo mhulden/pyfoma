@@ -1568,6 +1568,88 @@ class FST:
         new_fst = FST.re("$^output($A @ (.|'':$B)*)", {'A': self, 'B': fst2})
         return new_fst
 
+    def eq(self, left: 'FST', right: 'FST', max_iter: int = 256, stabilize: bool = True) -> 'FST':
+        """foma-style _eq(self, left, right).
+
+        Returns the subtransducer of self where all substrings between left/right
+        delimiters on the output side are identical (with bypass behavior for
+        malformed nesting or fewer than two bracketed spans).
+        """
+        if max_iter < 1:
+            raise ValueError("max_iter must be >= 1")
+
+        def _q(token: str) -> str:
+            return "'" + token.replace("\\", "\\\\").replace("'", "\\'") + "'"
+
+        def _alt_expr(symbols: list[str]) -> str:
+            return "(" + "|".join(_q(sym) for sym in symbols) + ")"
+
+        allsyms = set(self.alphabet) | set(left.alphabet) | set(right.alphabet)
+        lb_sym = "__EQ_LB__"
+        rb_sym = "__EQ_RB__"
+        while lb_sym in allsyms or rb_sym in allsyms:
+            lb_sym += "_"
+            rb_sym += "_"
+
+        lb = FST.re(_q(lb_sym))
+        rb = FST.re(_q(rb_sym))
+
+        out = FST.re("$^output($N)", {"N": self})
+        mark_left = FST.re("$^rewrite($L:($L $LB))", {"L": left, "LB": lb})
+        mark_right = FST.re("$^rewrite($R:($RB $R))", {"R": right, "RB": rb})
+        bracketed = FST.re("$^output($O @ $ML @ $MR)", {"O": out, "ML": mark_left, "MR": mark_right})
+
+        symbols = sorted(s for s in bracketed.alphabet if s not in {"", lb_sym, rb_sym})
+        if not symbols:
+            return self.copy_mod()
+
+        no_lb = FST.re(_alt_expr(symbols + [rb_sym]))
+        no_br = FST.re(_alt_expr(symbols) + "*")
+        sigma = FST.re(_alt_expr(symbols + [lb_sym, rb_sym]))
+        sigma_star = FST.re(_alt_expr(symbols + [lb_sym, rb_sym]) + "*")
+
+        bracket_filter = FST.re(
+            "$NOBR $LB $NOBR $RB $NOBR ($LB $NOBR $RB $NOBR)+",
+            {"NOBR": no_br, "LB": lb, "RB": rb},
+        )
+        leq = FST.re("$B & $BF", {"B": bracketed, "BF": bracket_filter})
+        bypass = FST.re("$B - $LEQ", {"B": bracketed, "LEQ": leq})
+
+        contains_adjacent = FST.re("$SIG* $LB $RB $SIG*", {"SIG": sigma, "LB": lb, "RB": rb})
+        no_adjacent = FST.re("$SSTAR - $ADJ", {"SSTAR": sigma_star, "ADJ": contains_adjacent})
+        cleanup_delete_empty = FST.re("$NOLB* ($LB:'' $RB:'' $NOLB*)*", {"NOLB": no_lb, "LB": lb, "RB": rb})
+        cleanup = FST.re("$D | $NA", {"D": cleanup_delete_empty, "NA": no_adjacent})
+
+        move = None
+        for sym in symbols:
+            this_move = FST.re(
+                f"($NOLB* ($LB:'' {_q(sym)} '':$LB))* $NOLB*",
+                {"NOLB": no_lb, "LB": lb},
+            )
+            move = this_move if move is None else FST.re("$A | $B", {"A": move, "B": this_move})
+
+        for _ in range(max_iter):
+            prev_hash = leq.hash() if stabilize else None
+            leq = FST.re("$L @ $C", {"L": leq, "C": cleanup})
+            leq = FST.re("$L @ $M", {"L": leq, "M": move})
+            if prev_hash is not None and leq.hash() == prev_hash:
+                break
+
+        leq_clean = (
+            leq.map_labels({lb_sym: "", rb_sym: ""})
+            .epsilon_remove()
+            .determinize_as_dfa()
+            .minimize_as_dfa()
+        )
+        bypass_clean = (
+            bypass.map_labels({lb_sym: "", rb_sym: ""})
+            .epsilon_remove()
+            .determinize_as_dfa()
+            .minimize_as_dfa()
+        )
+        allowed = FST.re("$A | $B", {"A": leq_clean, "B": bypass_clean})
+        return FST.re("$N @ $A", {"N": self, "A": allowed}).minimize_as_dfa()
+
     def rewrite(self, *contexts, **flags) -> 'FST':
         """Rewrite self in contexts in parallel, controlled by flags."""
         def _flag_true(name: str) -> bool:
@@ -2402,6 +2484,9 @@ def determinize(fst: 'FST'):
 
 def ignore(fst1: 'FST', fst2: 'FST'):
     return fst1.ignore(fst2)
+
+def eq(fst: 'FST', left: 'FST', right: 'FST', max_iter: int = 256, stabilize: bool = True):
+    return fst.eq(left, right, max_iter=max_iter, stabilize=stabilize)
 
 def rewrite(fst: 'FST', *contexts, **flags):
     return fst.rewrite(*contexts, **flags)

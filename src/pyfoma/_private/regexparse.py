@@ -24,6 +24,7 @@ class RegexParse:
                 'invert': fst.invert,
                 'minimize': fst.minimize,
                 'determinize': fst.determinize,
+                'eq': fst.eq,
                 'shuffle': fst.shuffle,
                 'ignore': fst.ignore,
                 'rewrite': fst.rewrite,
