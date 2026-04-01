@@ -328,7 +328,7 @@ def _multichar_matcher(multichar_symbols: Iterable[str]) -> pyre.Pattern:
     ordered = [sym for sym in multichar_symbols if len(sym) > 1]
     ordered.sort(key=len, reverse=True)
     return pyre.compile(
-        r"('(?:\\'|[^'])*')|("
+        r"(\\'|'(?:\\'|[^'])*')|("
         + "|".join(pyre.escape(sym) for sym in ordered)
         + r")")
 

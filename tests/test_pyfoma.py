@@ -596,12 +596,18 @@ class TestSymbols(unittest.TestCase):
     def test_quotes(self):
         """Make sure already-quoted things stay quoted correctly and we
         can pathologically escape quotes everywhere"""
-        words = ["'HACKEM'MUCHE", r"FOOBIE'BL\'ETCH'", r"'''"]
-        lex = FST.from_strings(words, multichar_symbols=["CH", "BL"])
+        words = ["'HACKEM'MUCHE", r"FOOBIE'BL\'ETCH'", r"'''", r"EEP\'OOP\'"]
+        lex = FST.from_strings(words, multichar_symbols=["CH", "BL", "OO"])
         self.assertTrue("HACKEM" in lex.alphabet)
         self.assertTrue("BL'ETCH" in lex.alphabet)
         self.assertTrue("'" in lex.alphabet)
         self.assertTrue("CH" in lex.alphabet)
+        # Ensure that we handle escaped quotes correctly
+        self.assertEqual("EEP'OOP'", next(lex.generate("EEP'OOP'")))
+        self.assertEqual(lex.tokenize_against_alphabet("EEP'OOP'"),
+                         ['E', 'E', 'P', "'", 'OO', 'P', "'"])
+        self.assertTrue("OO" in lex.alphabet)
+        self.assertTrue("O" not in lex.alphabet)
         # Ensure that we don't introduce multichar_symbols inside
         # already quoted symbols
         self.assertTrue("BL" not in lex.alphabet)
