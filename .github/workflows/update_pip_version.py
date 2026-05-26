@@ -8,7 +8,7 @@ def main(argv):
 	try:
 		opts, args = getopt.getopt(argv, "hv:", ["version ="])
 	except:
-		print(help_string)	
+		print(help_string)
 		sys.exit(2)
 	for opt, arg in opts:
 		if opt == '-h':
@@ -16,17 +16,17 @@ def main(argv):
 			sys.exit()
 		elif opt in ("-v", "--version"):
 			new_version = arg
-	
+
 	if new_version == "":
 		print(help_string)
 		sys.exit(2)
-	
+
 	print("NEW VERSION: " + new_version)
 	# Write the new version to the file
-	with fileinput.FileInput("./setup.py", inplace=True, backup='.bak') as file:
+	with fileinput.FileInput("./pyfoma/__init__.py", inplace=True, backup='.bak') as file:
 		for line in file:
-			if "version =" in line:
-				line = "\tversion = \"" + new_version + "\","
+			if "__version__" in line:
+				line = "\t__version__ = \"" + new_version + "\","
 			print(line.rstrip())
 if __name__ == "__main__":
-	main(sys.argv[1:]) 
+	main(sys.argv[1:])
