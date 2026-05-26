@@ -29,7 +29,7 @@ def main(argv):
 	with fileinput.FileInput("./src/pyfoma/__init__.py", inplace=True, backup='.bak') as file:
 		for line in file:
 			if "__version__" in line:
-				line = "\t__version__ = \"" + new_version + "\","
+				line = "__version__ = \"" + new_version + "\""
 			print(line.rstrip())
 if __name__ == "__main__":
 	main(sys.argv[1:])
