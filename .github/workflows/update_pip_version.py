@@ -23,7 +23,7 @@ def main(argv):
 
 	print("NEW VERSION: " + new_version)
 	# Write the new version to the file
-	with fileinput.FileInput("./pyfoma/__init__.py", inplace=True, backup='.bak') as file:
+	with fileinput.FileInput("./src/pyfoma/__init__.py", inplace=True, backup='.bak') as file:
 		for line in file:
 			if "__version__" in line:
 				line = "\t__version__ = \"" + new_version + "\","
