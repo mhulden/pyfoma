@@ -21,6 +21,9 @@ def main(argv):
 		print(help_string)
 		sys.exit(2)
 
+	if new_version.startswith("v"):
+		new_version = new_version.removeprefix("v")
+
 	print("NEW VERSION: " + new_version)
 	# Write the new version to the file
 	with fileinput.FileInput("./src/pyfoma/__init__.py", inplace=True, backup='.bak') as file:
