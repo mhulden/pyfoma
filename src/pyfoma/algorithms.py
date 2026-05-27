@@ -93,4 +93,6 @@ def ostia(samples: List[Tuple[Union[str, List[str]], Union[str, List[str]]]], me
         return _ostia(samples, mode)
     else:
         from ._private.ostia_py import ostia as _ostia
-        return _ostia(samples, merging_order)
+        if merging_order != 'lex':
+            raise NotImplementedError()
+        return _ostia(samples)
