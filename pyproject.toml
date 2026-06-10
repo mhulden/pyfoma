@@ -37,3 +37,6 @@ dependencies = ["hatch-cython"]
 
 [tool.hatch.build.targets.wheel.hooks.cython.options]
 compile_py = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "src/pyfoma/flag.py", "src/pyfoma/_private/eliminate_flags.py"]
