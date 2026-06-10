@@ -86,11 +86,11 @@ def eliminate_flags(fst, Xs=None):
 
     tests = get_value_tests(Xs, ys)
     for t in tests:
-        flagsyms.update(sym for sym in t.alphabet if FlagOp.is_flag(sym))
         fst = FST.re("$x @ $y", {"x": fst, "y": t})
+    flagsyms.update(sym for sym in fst.alphabet if FlagOp.is_flag(sym))
     if flagsyms:
-        flagre = "|".join(f"'{sym}'" for sym in flagsyms)
-        clean = FST.re(f"$^rewrite(({flagre}):'')")
+        clean = reduce(lambda x, y: FST.re("$x @ $y",{"x":x, "y":y}), 
+                       [FST.re(f"$^rewrite('{flag}':'')") for flag in flagsyms])
         fst = FST.re("$^invert($fst @ $clean)", {"fst": fst, "clean": clean})
         fst = FST.re("$^invert($fst @ $clean)", {"fst": fst, "clean": clean})
     return fst
