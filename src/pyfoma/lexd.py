@@ -121,6 +121,7 @@ def from_tuples(tuples_iter: Iterable[Iterable[Tuple[str, ...]]]) -> FST:
 @dataclass(frozen=True)
 class TagSelector:
     clauses: Tuple[Tuple[frozenset[str], frozenset[str]], ...]
+    raw: str | None = None
 
     @staticmethod
     def any() -> "TagSelector":
@@ -218,7 +219,7 @@ def parse_tag_selector(raw: str) -> TagSelector:
             comp_sel = TagSelector(((frozenset([comp]), frozenset()),))
         sel = sel.and_selector(comp_sel)
 
-    return sel
+    return TagSelector(sel.clauses, raw)
 
 # ----------------------------------------
 # Lexicon parsing helpers
@@ -741,8 +742,8 @@ def _parse_token_ref(tok: str) -> TokRef:
 
     # Special lexd syntax: X(1):X(2) binds the same lexicon entry while using different columns
     # on the input/output side. (This is NOT the regex cross-product operator.)
-    if ":" in tok:
-        left, right = tok.split(":", 1)
+    left, colon, right = tok.partition(":")
+    if colon:
         m1 = re.match(r"^(.+?)\((\d+)\)$", left)
         m2 = re.match(r"^(.+?)\((\d+)\)$", right)
         if m1 and m2 and m1.group(1) == m2.group(1):
@@ -806,7 +807,7 @@ def _parse_pattern_expr(tokens: List[str], pos: int = 0) -> Tuple[PatExpr, int]:
 
             # Postfix selector(s) on the expression we just parsed: (...)[selector]
             while p < len(tokens) and tokens[p].startswith("__POSTSEL__:"):
-                raw = tokens[p].split(":", 1)[1]
+                raw = tokens[p][len("__POSTSEL__:"):]
                 sel = parse_tag_selector(raw.strip())
                 e = Tagged(e, sel)
                 p += 1
@@ -1071,7 +1072,7 @@ def parse_lexd(lexdstring: str) -> ParsedLexd:
                 continue
             if head == "LEXICON":
                 mode = "LEXICON"
-                rest_raw = line.split(None, 1)[1]
+                rest_raw = line.split()[1]
 
                 # Lexicon definition tags may appear as:
                 #   LEXICON A[x]
@@ -1198,9 +1199,8 @@ def _compile_lexicon_entry_variant(
         regex = _wrap_top_level_colon_operands(regex)
         return FST.re(regex)
 
-    if ":" in content:
-        lexside, surfside = content.split(":", 1)
-    else:
+    lexside, colon, surfside = content.partition(":")
+    if colon == "":
         lexside, surfside = content, content
     lexside = lexside.strip()
     surfside = surfside.strip()
@@ -1279,9 +1279,8 @@ def _compile_lexicon_variant(
             regex_union = rf if regex_union is None else union(regex_union, rf)
             continue
 
-        if ":" in content:
-            lexside, surfside = content.split(":", 1)
-        else:
+        lexside, colon, surfside = content.partition(":")
+        if colon == "":
             lexside, surfside = content, content
 
         lexside = lexside.strip()
@@ -1345,7 +1344,7 @@ def compile_lexd(parsed: ParsedLexd, strict_quoted: bool = False) -> FST:
         nonlocal anon_counter
 
         if tok.kind == "anonlex":
-            raw = tok.name.split(":", 1)[1]
+            _, _, raw = tok.name.partition(":")
             if tok.name not in anon_map:
                 anon_counter += 1
                 anon_name = f"__anonlex_{anon_counter}"
